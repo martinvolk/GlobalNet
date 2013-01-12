@@ -33,38 +33,35 @@ string con_state_to_string(ConnectionState state){
 }
 
 
-static int _console_listen(Service *self, const char *host, uint16_t port){
+static int _console_listen(Service &self, const char *host, uint16_t port){
 	LOG("[console] starting console service on port "<<port);
 	
-	Connection *con = NET_createConnection(self->net, "tcp", false);
-	con->listen(con, host, port);
-	self->socket = con;
+	Connection *con = NET_createConnection(*self.net, "tcp", false);
+	con->listen(*con, host, port);
+	self.socket = con;
 	
 	return 1;
 }
 
-static void _console_run(Service *self){
+static void _console_run(Service &self){
 	Connection *client; 
 	
-	if((client = self->socket->accept(self->socket))){
+	if((client = SRV_accept(self))){
 		LOG("new client connected to the console!");
-		self->clients.push_back(client);
-		
 		
 		string prompt = "gnet# ";
-		client->send(client, &prompt[0], prompt.length());
-		
+		client->send(*client, &prompt[0], prompt.length());
 	}
 	
-	for(vector<Connection*>::iterator c = self->clients.begin(); c!= self->clients.end(); c++){
-		stringstream &ss = *((stringstream*)self->data);
+	for(uint c=0;c<ARRSIZE(self.clients);c++){
 		string cmd;
 		char str[1024];
 		int rs;
 		
-		(*c)->run(*c);
+		Connection *con = self.clients[c];
+		if(!con) continue;
 		
-		if((rs = (*c)->recv(*c, str, 1024))>0){
+		if((rs = con->recv(*con, str, 1024))>0){
 			str[rs] =0 ;
 			cout<<str<<endl;
 			
@@ -72,39 +69,40 @@ static void _console_run(Service *self){
 		}
 		
 		if(cmd.length()){
-			LOG("[console] processing command " << cmd);
+			LOG("[console] processing PacketHeader " << cmd);
 			
 			if(cmd.compare("listpeers")){
 				LOG("test");
-				for(vector<Connection*>::iterator x = self->net->peers.begin(); x != self->net->peers.end(); x++){
+				/*
+				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){
 					SEND_SOCK(*c, "connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 				}
-				for(vector<Link*>::iterator l = self->net->links.begin(); l != self->net->links.end(); l++){
+				for(vector<Link*>::iterator l = self.net->links.begin(); l != self.net->links.end(); l++){
 					SEND_SOCK(*c, "link: ");
 					for(vector<Connection*>::iterator x = (*l)->nodes.begin(); x != (*l)->nodes.end(); x++){
 						SEND_SOCK(*c, "    connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 					}
-				}
+				}*/
 				
 			}
 			else if(cmd == "test"){
 				// send an introduction packet
 				cout << "Attempting to send test packets.."<<endl;
 				Packet pack;
-				
-				for(vector<Connection*>::iterator c = self->net->peers.begin(); c != self->net->peers.end(); c++){
+				/*
+				for(vector<Connection*>::iterator c = self.net->peers.begin(); c != self.net->peers.end(); c++){
 					cout << "Sending test packet.."<<endl;
 					string str = "Hello World";
 					pack.cmd.code = CMD_TEST;
-					pack.cmd.data_length = str.length();
-					pack.data.resize(sizeof(Command)+pack.cmd.data_length);
+					pack.cmd.size = str.length();
+					//pack.data.resize(sizeof(Command)+pack.cmd.size);
 					memcpy(&pack.data[0], str.c_str(), str.length());
 					//(*c)->send((*c), pack.c_ptr(), pack.size());
 					//CON_sendPacket(*c, pack);
 					//CON_sendPacket(conn, pack);
 					//CON_sendPacket(conn, pack);
 				}
-				
+				*/
 				/// establish a rendezvous connection to a hidden service (started with -s)
 				// this function starts the connection process. Once completed, the service state is set to SRV_STATE_ACTIVE
 				// if the operation does not complete in due time, the state will be set to SRV_STATE_DISCONNECTED
@@ -137,8 +135,8 @@ static void _console_run(Service *self){
 				
 				cout << "Sending test packet to bob.."<<endl;
 				pack.cmd.code = CMD_DATA;
-				pack.cmd.data_length = str.length();
-				pack.data.resize(sizeof(Command)+pack.cmd.data_length);
+				pack.cmd.size = str.length();
+				pack.data.resize(sizeof(Command)+pack.cmd.size);
 				memcpy(&pack.data[0], str.c_str(), str.length());
 				CON_sendPacket(alice, pack);*/
 				/*
@@ -156,14 +154,14 @@ static void _console_run(Service *self){
 			}
 			// send the prompt
 			string prompt = "gnet# ";
-			(*c)->send(*c, &prompt[0], prompt.length());
+			con->send(*con, &prompt[0], prompt.length());
 		}
 	}
 }
 
 
-void SRV_initCONSOLE(Service *self){
-	self->data = new stringstream; // command buffer
-	self->listen = _console_listen;
-	self->run = _console_run;
+void SRV_initCONSOLE(Service &self){
+	self.initialized = true;
+	self.listen = _console_listen;
+	self.run = _console_run;
 }

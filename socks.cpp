@@ -10,18 +10,18 @@ data to the remote end. On the remote end we can have a socket that connects
 to another host and relays information from that connection. **/
 
 
-static void _socks_run(Service *self){
+static void _socks_run(Service &self){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
 	char buf[SOCKET_BUF_SIZE];
 	int z;
 	
-	if((z = accept4(self->local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
+	if((z = accept4(self.local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		LOG("[server socket] client connected!");
 		int random = rand();
 		LINKADDRESS addr;
 		SHA1((unsigned char*)&random, sizeof(int), (unsigned char*)addr.hash);
-		self->local_clients[addr.hex()] = z;
+		self.local_clients[addr.hex()] = z;
 		
 		/// read the first introduction specifying an ip address that we are connecting to
 		struct socks_t{
@@ -88,8 +88,8 @@ static void _socks_run(Service *self){
 	//	SOCK_ERROR("accept(2)");  
 		
 	/// process data from local clients
-	for(map<string, int>::iterator it = self->local_clients.begin();
-			it != self->local_clients.end();
+	for(map<string, int>::iterator it = self.local_clients.begin();
+			it != self.local_clients.end();
 			it++){
 		int sock = (*it).second;
 		int rs;
@@ -101,7 +101,7 @@ static void _socks_run(Service *self){
 	}
 }
 
-int _socks_listen(Service *self, const char *host, uint16_t port){
+int _socks_listen(Service &self, const char *host, uint16_t port){
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -142,7 +142,7 @@ int _socks_listen(Service *self, const char *host, uint16_t port){
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	self->local_socket = s;
+	self.local_socket = s;
 	return 1;
 	
 close:
@@ -150,8 +150,9 @@ close:
 	return 0;
 }
 
-void SRV_initSOCKS(Service *self){
-	self->listen = _socks_listen;
-	self->run = _socks_run;
+void SRV_initSOCKS(Service &self){
+	self.initialized = true;
+	self.listen = _socks_listen;
+	self.run = _socks_run;
 }
 

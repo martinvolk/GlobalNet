@@ -29,10 +29,10 @@ void con_show_certs(Connection *c){
 			printf("No certificates.\n");
 }
 
-int _ssl_recv(Connection *self, char *data, size_t size){
+int _ssl_recv(Connection &self, char *data, size_t size){
 	int rc; 
-	if((rc = SSL_read(self->ssl, data, size))>0){
-		LOG("[SSL] recv: "<<self->host<<":"<<self->port<<" length: "<<rc<<" ");
+	if((rc = SSL_read(self.ssl, data, size))>0){
+		LOG("[SSL] recv: "<<self.host<<":"<<self.port<<" length: "<<rc<<" ");
 		
 		std::ostringstream os;
 		os.fill('0');
@@ -51,16 +51,16 @@ int _ssl_recv(Connection *self, char *data, size_t size){
 	return -1;
 }
 
-int _ssl_send(Connection *self, const char *data, size_t size){
+int _ssl_send(Connection &self, const char *data, size_t size){
 	int rc; 
-	if((rc = SSL_write(self->ssl, data, size))<=0){
-		LOG("error sending ssl to "<<self->host<<":"<<self->port<<": "<<errorstring(SSL_get_error(self->ssl, rc)));
+	if((rc = SSL_write(self.ssl, data, size))<=0){
+		LOG("error sending ssl to "<<self.host<<":"<<self.port<<": "<<errorstring(SSL_get_error(self.ssl, rc)));
 		ERR_SSL(rc);
 		return -1;
 	}
 	
 	if(rc>0){
-		LOG("[SSL] send: "<<self->host<<":"<<self->port<<" length: "<<rc<<" ");
+		LOG("[SSL] send: "<<self.host<<":"<<self.port<<" length: "<<rc<<" ");
 		
 		std::ostringstream os;
 		os.fill('0');
@@ -77,76 +77,76 @@ int _ssl_send(Connection *self, const char *data, size_t size){
 	return rc;
 }
 
-static int _ssl_connect(Connection *self, const char *host, uint16_t port){
+static int _ssl_connect(Connection &self, const char *host, uint16_t port){
 	int ret = -1;
-	if(self->_next && (ret = self->_next->connect(self->_next, host, port))>0){
+	if(self._next && (ret = self._next->connect(*self._next, host, port))>0){
 		LOG("[ssl] connected to "<<host<<port);
-		self->state = CON_STATE_SSL_HANDSHAKE;
+		self.state = CON_STATE_SSL_HANDSHAKE;
 	}
 	return ret;
 }
 
-Connection *_ssl_accept(Connection *self){
-	Connection *con = new Connection();
-	CON_initSSL(con, false);
-	if(self->_next){
-		con->_next = self->_next->accept(self->_next);
-		if(!con->_next){
-			delete con;
-			return 0; //require that underlying has a connection
+Connection *_ssl_accept(Connection &self){
+	
+	if(self._next){
+		Connection *peer = self._next->accept(*self._next);
+		if(peer){
+			Connection *con = NET_allocConnection(*self.net);
+			CON_initSSL(*con, false);
+			con->_next = peer;
+			con->state = CON_STATE_SSL_HANDSHAKE;
+			return con; //require that underlying has a connection
 		}
 	}
-	//LOG("[ssl] accepted new connection!");
-	con->state = CON_STATE_SSL_HANDSHAKE;
-	return con;
+	return 0;
 }
-int _ssl_listen(Connection *self, const char *host, uint16_t port){
-	if(self->_next)
-		return self->_next->listen(self->_next, host, port);
+int _ssl_listen(Connection &self, const char *host, uint16_t port){
+	if(self._next)
+		return self._next->listen(*self._next, host, port);
 	return -1;
 }
 
-void _ssl_bridge(Connection *self, Connection *other){
+void _ssl_bridge(Connection &self, Connection *other){
 	ERROR("[ssl] function bridge() not implemented!");
 }
-void _ssl_run(Connection *self){
-	if(!self->_next){
+void _ssl_run(Connection &self){
+	if(!self._next){
 		LOG("[warning] no backend set for the SSL connection!");
 		return;
 	}
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
-	//LOG(self->write_buf->num_written);
-	//LOG("[ssl] run "<<self->host<<":"<<self->port);
+	//LOG(self.write_buf->num_written);
+	//LOG("[ssl] run "<<self.host<<":"<<self.port);
 	
 	// send/recv data
-	if(self->_next ){
-		self->_next->run(self->_next);
-		while(!BIO_eof(self->write_buf)){
-			if((rc = BIO_read(self->write_buf, tmp, SOCKET_BUF_SIZE))>0)
-				self->_next->send(self->_next, tmp, rc);
+	if(self._next ){
+		self._next->run(*self._next);
+		while(!BIO_eof(self.write_buf)){
+			if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0)
+				self._next->send(*self._next, tmp, rc);
 		}
-		if((rc = self->_next->recv(self->_next, tmp, SOCKET_BUF_SIZE))>0){
-			BIO_write(self->read_buf, tmp, rc);
+		if((rc = self._next->recv(*self._next, tmp, SOCKET_BUF_SIZE))>0){
+			BIO_write(self.read_buf, tmp, rc);
 		}
 	}
 	
 	// check if the async handshake is completed
-	if(self->state == CON_STATE_SSL_HANDSHAKE){
+	if(self.state == CON_STATE_SSL_HANDSHAKE){
 		int res;
-		if(self->is_client == true){
-			if((res = SSL_connect(self->ssl))>0){
-				self->state = CON_STATE_ESTABLISHED;
-				LOG("ssl connection succeeded! Connected to peer "<<self->host<<":"<<self->port);
+		if(self.is_client == true){
+			if((res = SSL_connect(self.ssl))>0){
+				self.state = CON_STATE_ESTABLISHED;
+				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
 			else{
 				//ERR_SSL(res);
 			}
 		}
 		else {
-			if((res=SSL_accept(self->ssl))>0){
-				self->state = CON_STATE_ESTABLISHED;
-				LOG("ssl connection succeeded! Connected to peer "<<self->host<<":"<<self->port);
+			if((res=SSL_accept(self.ssl))>0){
+				self.state = CON_STATE_ESTABLISHED;
+				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
 			else{
 				//ERR_SSL(res);
@@ -155,56 +155,56 @@ void _ssl_run(Connection *self){
 	}
 }
 
-int CON_initSSL(Connection *self, bool client){
+int CON_initSSL(Connection &self, bool client){
 	CON_init(self, client);
 	
 	if(client)
-		self->ctx = SSL_CTX_new (SSLv3_client_method ());
+		self.ctx = SSL_CTX_new (SSLv3_client_method ());
 	else
-		self->ctx = SSL_CTX_new (SSLv3_server_method ());
+		self.ctx = SSL_CTX_new (SSLv3_server_method ());
 
 	/* if on the client: SSL_set_connect_state(con); */
 	if(client){
-		SSL_CTX_use_certificate_file(self->ctx,CLIENT_CERT, SSL_FILETYPE_PEM);
-		SSL_CTX_use_PrivateKey_file(self->ctx,CLIENT_KEY, SSL_FILETYPE_PEM);
-		if ( !SSL_CTX_check_private_key(self->ctx) )
+		SSL_CTX_use_certificate_file(self.ctx,CLIENT_CERT, SSL_FILETYPE_PEM);
+		SSL_CTX_use_PrivateKey_file(self.ctx,CLIENT_KEY, SSL_FILETYPE_PEM);
+		if ( !SSL_CTX_check_private_key(self.ctx) )
     {
         fprintf(stderr, "Private key does not match the public certificate\n");
         abort();
     }
     
-    SSL_CTX_set_verify(self->ctx, SSL_VERIFY_NONE, 0);
-		SSL_CTX_set_verify_depth(self->ctx,4);
+    SSL_CTX_set_verify(self.ctx, SSL_VERIFY_NONE, 0);
+		SSL_CTX_set_verify_depth(self.ctx,4);
 	}
 	else {
-		SSL_CTX_use_certificate_file(self->ctx, SERVER_CERT, SSL_FILETYPE_PEM);
-		SSL_CTX_use_PrivateKey_file(self->ctx, SERVER_KEY, SSL_FILETYPE_PEM);
-		if ( !SSL_CTX_check_private_key(self->ctx) )
+		SSL_CTX_use_certificate_file(self.ctx, SERVER_CERT, SSL_FILETYPE_PEM);
+		SSL_CTX_use_PrivateKey_file(self.ctx, SERVER_KEY, SSL_FILETYPE_PEM);
+		if ( !SSL_CTX_check_private_key(self.ctx) )
     {
         fprintf(stderr, "Private key does not match the public certificate\n");
         abort();
     }
 		
-		SSL_CTX_set_verify(self->ctx, SSL_VERIFY_NONE, 0);
-		SSL_CTX_set_verify_depth(self->ctx,4);
+		SSL_CTX_set_verify(self.ctx, SSL_VERIFY_NONE, 0);
+		SSL_CTX_set_verify_depth(self.ctx,4);
 	}
 	
-	self->ssl = SSL_new (self->ctx);
+	self.ssl = SSL_new (self.ctx);
 	
 	/* bind them together */
-	SSL_set_bio(self->ssl, self->read_buf, self->write_buf);
+	SSL_set_bio(self.ssl, self.read_buf, self.write_buf);
 	
-	self->state = CON_STATE_SSL_HANDSHAKE;
-	self->is_client = client;
+	self.state = CON_STATE_SSL_HANDSHAKE;
+	self.is_client = client;
 	
-	self->connect = _ssl_connect;
-	self->accept = _ssl_accept;
-	self->send = _ssl_send;
-	self->recv = _ssl_recv;
-	self->run = _ssl_run;
-	self->listen = _ssl_listen;
-	self->bridge = _ssl_bridge;
-	//self->on_data_received = _ssl_on_data_received;
+	self.connect = _ssl_connect;
+	self.accept = _ssl_accept;
+	self.send = _ssl_send;
+	self.recv = _ssl_recv;
+	self.run = _ssl_run;
+	self.listen = _ssl_listen;
+	self.bridge = _ssl_bridge;
+	//self.on_data_received = _ssl_on_data_received;
 	return 1;
 }
 

@@ -33,6 +33,7 @@
 #include <numeric>
 #include <udt.h>
 #include <fcntl.h>
+#include <math.h>
 #include "cc.h"
 #include "optionparser.h"
 
@@ -50,9 +51,20 @@ using namespace std;
 		fputc( '\n', stderr); \
 }
 
+#define ARRSIZE(arr) (sizeof(arr)/sizeof(arr[0]))
+
 #define SOCKET_BUF_SIZE 1024
 
 #define SERV_LISTEN_PORT 9000
+
+// maximum simultaneous connections
+#define MAX_CONNECTIONS 1024
+#define MAX_LINKS 1024
+#define MAX_SERVERS 32
+#define MAX_SOCKETS 1024
+#define MAX_PEERS 1024
+#define MAX_PACKET_SIZE 32768
+#define MAX_LINK_NODES 16
 
 typedef struct linkaddress_t {
 	char hash[20];
@@ -157,8 +169,13 @@ typedef enum{
 typedef int TCPSocket;
 typedef int UDPSocket;
 
+struct Network;
+
 // peer to peer connection
 struct Connection{
+	bool initialized;
+	Network *net;
+	
 	SSL_CTX *ctx;
 	SSL *ssl; // ssl context for the connection
 	BIO *read_buf;
@@ -183,73 +200,54 @@ struct Connection{
 	void 	*data_ptr;
 	
 	// virtual functions
-	int (*connect)(Connection *self, const char *host, uint16_t port);
-	int (*send)(Connection *self, const char *data, size_t size);
-	int (*recv)(Connection *self, char *data, size_t size);
-	int (*sendBlock)(Connection *self, const Packet &pack);
-	int (*recvBlock)(Connection *self, Packet &pack);
-	int (*listen)(Connection *self, const char *host, uint16_t port);
-	Connection* (*accept)(Connection *self);
-	void (*run)(Connection *self);
-	void (*bridge)(Connection *self, Connection *other);
-	void (*close)(Connection *self);
+	int (*connect)(Connection &self, const char *host, uint16_t port);
+	int (*send)(Connection &self, const char *data, size_t size);
+	int (*recv)(Connection &self, char *data, size_t size);
+	int (*sendBlock)(Connection &self, const Packet &pack);
+	int (*recvBlock)(Connection &self, Packet &pack);
+	int (*listen)(Connection &self, const char *host, uint16_t port);
+	Connection* (*accept)(Connection &self);
+	void (*run)(Connection &self);
+	void (*bridge)(Connection &self, Connection *other);
+	void (*close)(Connection &self);
 	
-	void (*on_data_received)(Connection *self, const char *data, size_t size);
+	void (*on_data_received)(Connection &self, const char *data, size_t size);
 };
 
 
-struct Command{
+struct PacketHeader{
 	uint16_t code;
 	uint16_t source_command;
-	uint16_t data_length;
-	
-	void operator=(const Command& other){
-		code = other.code;
-	}
+	uint16_t size;
 }; 
 
 
 struct Packet{
-	Command cmd;
-	vector<char> data;
-	vector<char> _tbuf;
+	PacketHeader cmd;
+	char data[MAX_PACKET_SIZE];
 	
 	// private data
 	Connection *source;
 	
 	Packet(){
 		cmd.code = -1;
-		source = 0;
 	}
 	
 	Packet(const Packet &other){
 		memcpy(&cmd, &other.cmd, sizeof(cmd));
-		data = other.data;
+		memcpy(data, other.data, sizeof(data));
 		source = other.source;
 	}
 	void operator=(Packet &other){
 		memcpy(&cmd, &other.cmd, sizeof(cmd));
-		cout<<other.data.size()<<endl; 
-		data = vector<char>(other.data.begin(), other.data.end());
+		memcpy(data, other.data, sizeof(data));
 		source = other.source;
 	}
-		
-	void toVec(vector<char> &dst){
-		cmd.data_length = data.size();
-		dst.resize(sizeof(Command)+data.size());
-		memcpy(&dst[0], &cmd, sizeof(Command));
-		memcpy(&dst[sizeof(Command)], &data[0], data.size());
-	}
 	const char *c_ptr(){
-		cmd.data_length = data.size();
-		_tbuf.resize(data.size()+sizeof(Command));
-		memcpy(&_tbuf[0], &cmd, sizeof(Command));
-		memcpy(&_tbuf[sizeof(Command)], &data[0], data.size());
-		return &_tbuf[0];
+		return (char*)&cmd;
 	}
 	size_t size(){
-		c_ptr();
-		return sizeof(Command)+_tbuf.size();
+		return cmd.size;
 	}
 };
 
@@ -257,22 +255,28 @@ struct Network;
 /* a link is an implementation of the routing protocol */ 
 /** Writing to a link writes data to the connection */
 struct Link{
+	bool initialized;
 	//LINKADDRESS address; // sha1 hash of the public key 
 	// intermediate peers involved in routing the link (chained connection)
-	vector<Connection*> nodes; 
+	Connection *nodes[MAX_LINK_NODES]; 
+	uint length;
 	
 	// local TCP socket listening for new data to be sent through the link
 	int local_socket; 
+	
+	Network *net; // parent network
 };
 
 struct Service{
+	bool initialized;
+	
 	LINKADDRESS address; // the global address of the service 
 	
 	ConnectionState state;
 	
 	// on server side
-	vector<Connection*> clients; // client sockets
-	vector<Link*> links;
+	Connection *clients[MAX_SOCKETS]; // client sockets
+	Link *links[MAX_LINKS];
 	
 	// on client side 
 	Link *server_link;  // link through which we can reach the other end
@@ -284,34 +288,46 @@ struct Service{
 	
 	void *data; 
 	
-	int (*listen)(Service *self, const char *host, uint16_t port);
-	void (*run)(Service *self);
+	int (*listen)(Service &self, const char *host, uint16_t port);
+	void (*run)(Service &self);
 };
 
+struct Peer{
+	bool initialized;
+	Connection *socket;
+};
 
 struct Network{
 	Connection *server; 
-	vector<Connection*> peers;
-	vector<Link*> links;
-	vector<Service*> services;
+	Connection sockets[MAX_SOCKETS];
+	Link links[MAX_LINKS];
+	Service services[MAX_SERVERS];
+	Peer peers[MAX_PEERS];
 };
 
 struct Application{
 	Network net;
 };
 
-void SRV_initSOCKS(Service *self);
-void SRV_initCONSOLE(Service *self);
 
-int CON_initPeer(Connection *self, bool client = true);
-int CON_initSSL(Connection *self, bool client = true);
-int CON_initTCP(Connection *self, bool client = true);
-int CON_initUDT(Connection *self, bool client = true);
-void CON_init(Connection *self, bool client = true);
-void CON_shutdown(Connection *self);
+int LNK_connect(Link &self, const string &host, int port, RelayProtocol proto);
 
-Service *NET_createService(Network *net, const char *name);
-Connection *NET_createConnection(Network *self, const char *name, bool client);
+void SRV_initSOCKS(Service &self);
+void SRV_initCONSOLE(Service &self);
+Connection *SRV_accept(Service &self);
+
+int CON_initPeer(Connection &self, bool client = true);
+int CON_initSSL(Connection &self, bool client = true);
+int CON_initTCP(Connection &self, bool client = true);
+int CON_initUDT(Connection &self, bool client = true);
+void CON_init(Connection &self, bool client = true);
+void CON_shutdown(Connection &self);
+
+Connection *NET_allocConnection(Network &self);
+Connection *NET_createConnection(Network &self, const char *name, bool client);
+
+Service &self_createService(Network &self, const char *name);
+Connection &self_createConnection(Network &self, const char *name, bool client);
 
 int tokenize(const string& str,
                       const string& delimiters, vector<string> &tokens);

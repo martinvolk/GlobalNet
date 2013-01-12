@@ -6,23 +6,23 @@ Implementation of a normal UDT connection. Does not support any commands or pack
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Connection *_udt_accept(Connection *self){
+Connection *_udt_accept(Connection &self){
 	UDTSOCKET recver;
 	sockaddr_storage clientaddr;
 	int addrlen = sizeof(clientaddr);
 	
 	/// accept connections on the server socket 
-	if(UDT::ERROR != (recver = UDT::accept(self->socket, (sockaddr*)&clientaddr, &addrlen))){
+	if(UDT::ERROR != (recver = UDT::accept(self.socket, (sockaddr*)&clientaddr, &addrlen))){
 		if(recver == UDT::INVALID_SOCK)
 		{
 			 cout << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
 			 return 0;
 		}
 		
-		Connection *conn = new Connection();
+		Connection *conn = NET_allocConnection(*self.net);
 		char clientservice[NI_MAXSERV];
 		
-		CON_initUDT(conn, self->is_client);
+		CON_initUDT(*conn, self.is_client);
 		
 		getnameinfo((sockaddr *)&clientaddr, addrlen, conn->host, sizeof(conn->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
 		conn->port = atoi(clientservice);
@@ -36,7 +36,7 @@ Connection *_udt_accept(Connection *self){
 	return 0;
 }
 
-static int _udt_connect(Connection *conn, const char *hostname, uint16_t port){
+static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	struct addrinfo hints, *local, *peer;
 	
 	
@@ -103,42 +103,42 @@ static int _udt_connect(Connection *conn, const char *hostname, uint16_t port){
 	
 	LOG("[udt] connected to "<<hostname<<port);
 	
-	conn->socket = client; 
-	strncpy(conn->host, hostname, sizeof(conn->host));
-	conn->port = port;
+	self.socket = client; 
+	strncpy(self.host, hostname, sizeof(self.host));
+	self.port = port;
 	
-	conn->state = CON_STATE_ESTABLISHED;
+	self.state = CON_STATE_ESTABLISHED;
 	return 1;
 }
 
-static int _udt_send(Connection *self, const char *data, size_t size){
-	return BIO_write(self->write_buf, data, size);
+static int _udt_send(Connection &self, const char *data, size_t size){
+	return BIO_write(self.write_buf, data, size);
 }
-static int _udt_recv(Connection *self, char *data, size_t size){
-	return BIO_read(self->read_buf, data, size);
+static int _udt_recv(Connection &self, char *data, size_t size){
+	return BIO_read(self.read_buf, data, size);
 }
 
-static void _udt_run(Connection *self){
+static void _udt_run(Connection &self){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	//LOG("[udt] run "<<self->host<<":"<<self->port);
+	//LOG("[udt] run "<<self.host<<":"<<self.port);
 	
 	// send/recv data
-	while(!BIO_eof(self->write_buf)){
-		if((rc = BIO_read(self->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+	while(!BIO_eof(self.write_buf)){
+		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
 			//LOG("UDT: sending "<<rc<<" bytes of data!");
-			UDT::send(self->socket, tmp, rc, 0);
+			UDT::send(self.socket, tmp, rc, 0);
 		}
 	}
-	if((rc = UDT::recv(self->socket, tmp, sizeof(tmp), 0))>0){
+	if((rc = UDT::recv(self.socket, tmp, sizeof(tmp), 0))>0){
 		//LOG("UDT: received "<<rc<<" bytes of data!");
-		BIO_write(self->read_buf, tmp, rc);
+		BIO_write(self.read_buf, tmp, rc);
 	}
 	
 }
-int _udt_listen(Connection *self, const char *host, uint16_t port){
-	if(self->state != CON_STATE_UNINITIALIZED && self->state != CON_STATE_DISCONNECTED){
+int _udt_listen(Connection &self, const char *host, uint16_t port){
+	if(self.state != CON_STATE_UNINITIALIZED && self.state != CON_STATE_DISCONNECTED){
 		//cout<<"CON_listen: connection has already been initialized. Please call CON_close() before establishing a new one!"<<endl;
 	//	return 0;
 	}
@@ -187,33 +187,33 @@ int _udt_listen(Connection *self, const char *host, uint16_t port){
 	
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
-	self->state = CON_STATE_LISTENING;
-	self->socket = socket;
+	self.state = CON_STATE_LISTENING;
+	self.socket = socket;
 	return 1;
 }
-void _udt_bridge(Connection *self, Connection *other){
+void _udt_bridge(Connection &self, Connection *other){
 	ERROR("UDT_bridge not implemented!");
 }
-void _udt_close(Connection *self){
-	UDT::close(self->socket);
+void _udt_close(Connection &self){
+	UDT::close(self.socket);
 }
 
-void _udt_on_data_received(Connection *self, const char *data, size_t size){
+void _udt_on_data_received(Connection &self, const char *data, size_t size){
 	ERROR("UDT_data_received not implemented!");
 }
 
-int CON_initUDT(Connection *self, bool client){
+int CON_initUDT(Connection &self, bool client){
 	CON_init(self);
 	
-	self->connect = _udt_connect;
-	self->send = _udt_send;
-	self->recv = _udt_recv;
-	self->listen = _udt_listen;
-	self->accept = _udt_accept;
-	self->run = _udt_run;
-	self->bridge = _udt_bridge;
-	self->close = _udt_close;
-	self->on_data_received = _udt_on_data_received;
+	self.connect = _udt_connect;
+	self.send = _udt_send;
+	self.recv = _udt_recv;
+	self.listen = _udt_listen;
+	self.accept = _udt_accept;
+	self.run = _udt_run;
+	self.bridge = _udt_bridge;
+	self.close = _udt_close;
+	self.on_data_received = _udt_on_data_received;
 	
 	return 1;
 }
