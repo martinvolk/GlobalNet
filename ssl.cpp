@@ -84,7 +84,8 @@ Connection *_ssl_accept(Connection &self){
 			
 			// the state now needs to be handshake because the connection 
 			// is already assumed to be established. 
-			con->state = CON_STATE_SSL_HANDSHAKE;
+			// (now done in main loop)
+			//con->state = CON_STATE_INITIALIZED;
 			
 			return con;
 		}
@@ -93,6 +94,7 @@ Connection *_ssl_accept(Connection &self){
 }
 
 int _ssl_listen(Connection &self, const char *host, uint16_t port){
+	self.is_client = false;
 	if(self._output)
 		return self._output->listen(*self._output, host, port);
 	return -1;
@@ -109,8 +111,11 @@ void _ssl_run(Connection &self){
 	
 	// if we are waiting for connection and the downline has changed it's state
 	// to being connected, we can now switch to handshake mode and do the handshake. 
-	if(self.state & CON_STATE_CONNECTING && self._output->state & CON_STATE_CONNECTED){
+	if((self.state & CON_STATE_INITIALIZED) && (self._output->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
+		memcpy(self.host, self._output->host, ARRSIZE(self.host));
+		self.port = self._output->port;
+		
 		self.state = CON_STATE_SSL_HANDSHAKE; 
 	}
 	if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_DISCONNECTED){
@@ -119,7 +124,7 @@ void _ssl_run(Connection &self){
 	
 	// send / receive data between internal buffers and output 
 	// but only if the connection is still valid. 
-	if(!self.state & CON_STATE_INVALID){
+	if(!(self.state & CON_STATE_INVALID)){
 		/// send/receive output data
 		if(self._output ){
 			self._output->run(*self._output);
@@ -139,6 +144,8 @@ void _ssl_run(Connection &self){
 		if(self.is_client == true){
 			if((res = SSL_connect(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
+				memcpy(self.host, self._output->host, ARRSIZE(self.host));
+				self.port = self._output->port;
 				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
 			else{
@@ -148,7 +155,9 @@ void _ssl_run(Connection &self){
 		else {
 			if((res=SSL_accept(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
-				//LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
+				memcpy(self.host, self._output->host, ARRSIZE(self.host));
+				self.port = self._output->port;
+				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
 			else{
 				//ERR_SSL(res);
@@ -220,7 +229,9 @@ int CON_initSSL(Connection &self, bool client){
 	/* bind them together */
 	SSL_set_bio(self.ssl, self.read_buf, self.write_buf);
 	
-	self.state = CON_STATE_SSL_HANDSHAKE;
+	self.type = NODE_SSL;
+	
+	self.state = CON_STATE_INITIALIZED;
 	self.is_client = client;
 	
 	self.connect = _ssl_connect;

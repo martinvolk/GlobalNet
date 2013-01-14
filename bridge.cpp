@@ -30,6 +30,7 @@ static void _bridge_run(Connection &self){
 			if(self._input){
 				self._input->sendCommand(*self._input, RELAY_CONNECT_OK, "", 0);
 			}
+			LOG("BRIDGE: connection established on the remote end!");
 			self.state = CON_STATE_ESTABLISHED; 
 		}
 		// if we think we are connected and the other node has gone to disconnected, 
@@ -39,6 +40,7 @@ static void _bridge_run(Connection &self){
 			if(self._input){
 				self._input->close(*self._input);
 			}
+			LOG("BRIDGE: connection bridge disconnected!");
 			self.state = CON_STATE_DISCONNECTED;
 		}
 	}
@@ -61,9 +63,6 @@ static void _bridge_run(Connection &self){
 static int _bridge_listen(Connection &self, const char *host, uint16_t port){
 	ERROR("CON_listen not implemented!");
 	return -1;
-}
-static void _bridge_peg(Connection &self, Connection *other){
-	ERROR("CON_bridge not implemented!");
 }
 static void _bridge_close(Connection &self){
 	ERROR("CON_close not implemented!");

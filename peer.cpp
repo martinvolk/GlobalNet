@@ -16,7 +16,7 @@ int _peer_connect(Connection &self, const char *hostname, uint16_t port){
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
 	self.state = CON_STATE_CONNECTING;
-	self._output->connect(*self._output, hostname, port);
+	self._output->_output->connect(*self._output->_output, hostname, port);
 	
 	return 1;
 }
@@ -61,6 +61,7 @@ static int _peer_listen(Connection &self, const char *host, uint16_t port){
 		LOG("You can not listen on this socket.");
 		return -1;
 	}
+	self.state = CON_STATE_LISTENING;
 	return self._output->listen(*self._output, host, port);
 }
 
@@ -110,7 +111,7 @@ int _peer_send_command(Connection &self, ConnectionMessage cmd, const char *data
 	// down the network in the main loop. inserts a command into the stream. 
 	Packet pack; 
 	pack.cmd.code = cmd;
-	/// hmm? can we be sure that this will never overflow? what if resize() fails?
+	pack.cmd.size = size;
 	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), size)); 
 	return BIO_write(self.write_buf, pack.c_ptr(), pack.size());
 }
@@ -143,7 +144,7 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
 		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
-		BIO_write(self.read_buf, packet.data, packet.cmd.size);
+		BIO_write(self.in_read, packet.data, packet.cmd.size);
 	}
 	// this one is sent as a request to make current node connect to a different host
 	// the request will originate from _output and the new connection should be 
@@ -226,9 +227,8 @@ void _peer_run(Connection &self){
 	int rc;
 	
 	// if we are waiting for connection and connection of the underlying node has been established
-	if(self.state & CON_STATE_CONNECTING && self._output && self._output->state & CON_STATE_CONNECTED){
+	if((self.state & CON_STATE_CONNECTING) && self._output && (self._output->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
-		string str = string("")+string(self._output->host);
 		memcpy(self.host, self._output->host, ARRSIZE(self.host));
 		self.port = self._output->port;
 		// toggle our state to connected as well. 
@@ -317,10 +317,14 @@ int CON_initPeer(Connection &self, bool client, Connection *ssl){
 		CON_initSSL(*ssl, client);
 		CON_initUDT(*udp, client);
 		ssl->_output = udp;
+		udp->_input = ssl;
+		ssl->_input = &self;
 		self._output = ssl;
 	} else {
 		self._output = ssl;
 	}
+	
+	self.type = NODE_PEER;
 	
 	self.connect = _peer_connect;
 	self.accept = _peer_accept;

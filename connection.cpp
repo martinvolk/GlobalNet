@@ -47,6 +47,7 @@ void CON_init(Connection &self, bool client){
 	self._output = 0;
 	self._input = 0;
 	self.is_client = client;
+	self.type = NODE_NONE;
 	
 	/* set up the memory-buffer BIOs */
 	self.read_buf = BIO_new(BIO_s_mem());
@@ -86,11 +87,11 @@ void CON_shutdown(Connection &self){
 	}
 	if(self._output){
 		self._output->_input = 0;
-		NET_free(self._output);
+		//NET_free(self._output);
 	}
 	if(self._input){
 		self._input->_output = 0;
-		NET_free(self._input);
+		//NET_free(self._input);
 	}
 	
 	if(self.socket)
@@ -101,4 +102,6 @@ void CON_shutdown(Connection &self){
 	self._output = 0;
 	self._input = 0;
 	self.socket = 0;
+	
+	self.state = CON_STATE_UNINITIALIZED;
 }

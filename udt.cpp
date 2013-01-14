@@ -13,6 +13,7 @@ Connection *_udt_accept(Connection &self){
 	
 	/// accept connections on the server socket 
 	if(UDT::ERROR != (recver = UDT::accept(self.socket, (sockaddr*)&clientaddr, &addrlen))){
+		LOG("[udt] accepted incoming connection!");
 		if(recver == UDT::INVALID_SOCK)
 		{
 			 cout << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
@@ -22,7 +23,7 @@ Connection *_udt_accept(Connection &self){
 		Connection *conn = NET_allocConnection(*self.net);
 		char clientservice[NI_MAXSERV];
 		
-		CON_initUDT(*conn, self.is_client);
+		CON_initUDT(*conn, false);
 		
 		getnameinfo((sockaddr *)&clientaddr, addrlen, conn->host, sizeof(conn->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
 		conn->port = atoi(clientservice);
@@ -212,6 +213,8 @@ void _udt_close(Connection &self){
 
 int CON_initUDT(Connection &self, bool client){
 	CON_init(self);
+	
+	self.type = NODE_UDT;
 	
 	self.connect = _udt_connect;
 	self.send = _udt_send;

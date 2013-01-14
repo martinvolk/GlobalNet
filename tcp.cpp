@@ -177,6 +177,8 @@ static void _tcp_close(Connection &self){
 int CON_initTCP(Connection &self, bool client){
 	CON_init(self);
 	
+	self.type = NODE_TCP;
+	
 	self.connect = _tcp_connect;
 	self.accept = _tcp_accept;
 	self.send = _tcp_send;

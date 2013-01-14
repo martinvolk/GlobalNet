@@ -101,7 +101,9 @@ Connection *NET_createLink(Network &self, const string &path){
 			//port = peer->socket->port;
 		} 
 		LOG("[link] establishing intermediate connection to "<<host<<":"<<port);
-		link->connect(*link, host.c_str(), port);
+		stringstream ss;
+		ss<<"peer:"<<host<<":"<<port;
+		link->connect(*link, ss.str().c_str(), 0);
 	}
 	return link;
 }
@@ -109,7 +111,9 @@ Connection *NET_createLink(Network &self, const string &path){
 Connection * NET_createTunnel(Network &self, const string &host, uint16_t port) {
 	Connection *link = NET_createLink(self, "*");
 	if(link){
-		link->connect(*link, host.c_str(), port);
+		stringstream ss;
+		ss<<"tcp:"<<host<<":"<<port;
+		link->connect(*link, ss.str().c_str(), 0);
 		return link;
 	}
 	return 0;

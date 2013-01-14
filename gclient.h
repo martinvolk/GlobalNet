@@ -174,6 +174,15 @@ typedef enum{
 #define CON_STATE_CONNECTED (CON_STATE_ESTABLISHED)
 #define CON_STATE_INVALID (CON_STATE_WAIT_CLOSE|CON_STATE_DISCONNECTED)
 
+typedef enum{
+	NODE_NONE=0,
+	NODE_TCP,
+	NODE_UDT,
+	NODE_SSL,
+	NODE_PEER,
+	NODE_LINK
+}NodeType; 
+
 typedef int TCPSocket;
 typedef int UDPSocket;
 
@@ -182,6 +191,8 @@ struct Network;
 // peer to peer connection
 struct Connection{
 	bool initialized;
+	NodeType type;
+	
 	Network *net;
 	
 	SSL_CTX *ctx;
