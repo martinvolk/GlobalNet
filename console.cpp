@@ -8,7 +8,7 @@ Thie service runs on a destined port and listens for commands from user.
 use "nc localhost 2000" to connect and use the console. 
 ***/
 
-#define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; (sock)->send(sock, ss.str().c_str(), ss.str().length());}
+#define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; (sock)->send(*sock, ss.str().c_str(), ss.str().length());}
 
 string con_state_to_string(ConnectionState state){
 	switch(state){
@@ -69,9 +69,45 @@ static void _console_run(Service &self){
 		}
 		
 		if(cmd.length()){
-			LOG("[console] processing PacketHeader " << cmd);
+			LOG("[console] processing command " << cmd);
 			
-			if(cmd.compare("listpeers")){
+			if(cmd.compare("stats")){
+				uint nc = 0, nl = 0, np = 0;
+				for(uint j = 0;j<ARRSIZE(self.net->sockets);j++){
+					Connection *sock = &self.net->sockets[j];
+					if(sock->initialized){
+						nc++;
+						SEND_SOCK(self.clients[c], "socket: " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
+					}
+				}
+				for(uint j = 0;j<ARRSIZE(self.net->links);j++){
+					Link *link = &self.net->links[j];
+					if(link->initialized){
+						nl++;
+						//SEND_SOCK(*c, "socket: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
+					}
+				}
+				for(uint j = 0;j<ARRSIZE(self.net->peers);j++){
+					Peer *peer = &self.net->peers[j];
+					if(peer && peer->initialized){
+						np++;
+						SEND_SOCK(self.clients[c], "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
+					}
+				}
+				SEND_SOCK(con, "Connections: "<<nc<<"/"<<ARRSIZE(self.net->sockets)<<", Links: "<<nl<<"/"<<ARRSIZE(self.net->links)<<
+						"Peers: "<<np<<"/"<<ARRSIZE(self.net->peers));
+				/*		
+				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){
+					SEND_SOCK(*c, "connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
+				}
+				for(vector<Link*>::iterator l = self.net->links.begin(); l != self.net->links.end(); l++){
+					SEND_SOCK(*c, "link: ");
+					for(vector<Connection*>::iterator x = (*l)->nodes.begin(); x != (*l)->nodes.end(); x++){
+						SEND_SOCK(*c, "    connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
+					}
+				}*/
+			}
+			else if(cmd.compare("listpeers")){
 				LOG("test");
 				/*
 				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){

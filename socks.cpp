@@ -9,6 +9,23 @@ In local model we can have a socket where we accept connections and forward
 data to the remote end. On the remote end we can have a socket that connects 
 to another host and relays information from that connection. **/
 
+static int select_socket(int socket, uint time_usec){
+	fd_set set;
+	struct timeval timeout;
+
+	/* Initialize the file descriptor set. */
+	FD_ZERO (&set);
+	FD_SET (socket, &set);
+
+	/* Initialize the timeout data structure. */
+	timeout.tv_sec = 0;
+	timeout.tv_usec = time_usec;
+
+	/* select returns 0 if timeout, 1 if input available, -1 if error. */
+	return select (FD_SETSIZE,
+																		&set, NULL, NULL,
+																		&timeout);
+}
 
 static void _socks_run(Service &self){
 	struct sockaddr_in adr_clnt;  
@@ -18,10 +35,6 @@ static void _socks_run(Service &self){
 	
 	if((z = accept4(self.local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		LOG("[server socket] client connected!");
-		int random = rand();
-		LINKADDRESS addr;
-		SHA1((unsigned char*)&random, sizeof(int), (unsigned char*)addr.hash);
-		self.local_clients[addr.hex()] = z;
 		
 		/// read the first introduction specifying an ip address that we are connecting to
 		struct socks_t{
@@ -31,7 +44,7 @@ static void _socks_run(Service &self){
 			unsigned char atype;
 			char data[256];
 		};
-		short port;
+		uint16_t port;
 		socks_t socks;
 		// recv method
 		int val = fcntl(z, F_GETFL, 0);
@@ -60,43 +73,80 @@ static void _socks_run(Service &self){
 				cout<<"IPv6 not supported!"<<endl;
 				close(z);
 		} 
-		*(socks.data+strlen(socks.data)-1) = 0;
-		memcpy(&port, socks.data+strlen(socks.data), sizeof(port));
+		char host[256];
+		unsigned char size = (unsigned char)socks.data[0];
+		memcpy(host, socks.data+1, size);
+		host[size] = 0;
+		memcpy(&port, socks.data+1+size, sizeof(port));
 		port = ntohs(port);
-		LOG("SOCKS v"<<int(socks.version)<<", CODE: "<<int(socks.code)<<", AT:" <<int(socks.atype)<<", IP: "<<socks.data<<":"<<int(port));
+		LOG("SOCKS v"<<int(socks.version)<<", CODE: "<<int(socks.code)<<", AT:" <<
+				int(socks.atype)<<", IP: "<<host<<":"<<port);
+				
 		// create the chain of routers that the new connection will be using
+		// try to retreive the link from cache
+		stringstream ss;
+		ss<<host<<":"<<port;
 		
-		// this will create a link with local and remote end
-		//Link *link = NET_createLink(&app->net, "localhost:9000");
-		// connect to the outside host that we got in the request
-		//LNK_connect(link, socks.data, port);
-		//app->net.links.push_back(link);
-		
-		// send reply with bound local address and port for the connection
-		socks.code = 0;
-		short nport = htons(0);
-		in_addr a;
-		inet_aton("127.0.0.1", &a);
-		memcpy(socks.data, &a, 4);
-		memcpy(socks.data+4, &nport, 2);
-		//send(z, &socks, sizeof(socks_t), 0);
-		
-		val = fcntl(z, F_GETFL, 0);
-		fcntl(z, F_SETFL, val | O_NONBLOCK);
-	}
-	//else if ( z == -1 )  
-	//	SOCK_ERROR("accept(2)");  
-		
-	/// process data from local clients
-	for(map<string, int>::iterator it = self.local_clients.begin();
-			it != self.local_clients.end();
-			it++){
-		int sock = (*it).second;
-		int rs;
-		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
-			buf[rs] = 0;
-			cout<<buf<<endl;
+		Link *link = 0;
+		/*if(self._cache.find(ss.str()) != self._cache.end()){
+			(Link*)self._cache[ss.str()]
+			link = (Link*)self._cache[ss.str()];
+		}*/
+		if(link == 0){
+			link = NET_createTunnel(*self.net, host,port);
+			self._cache[ss.str()] = link;
 		}
+		
+		if(link){
+			/// send success packet to the connected client
+			socks.code = 0;
+			socks.atype = 1;
+			short nport = htons(0);
+			in_addr a;
+			inet_aton("127.0.0.1", &a);
+			memset(socks.data, 0, 6);
+			//memcpy(socks.data, &a, 4);
+			//memcpy(socks.data+4, &nport, 2);
+			send(z, &socks, 10, 0);
+			
+			self.local_clients.push_back(pair<int, Link*>(z, link));
+			
+			
+			val = fcntl(z, F_GETFL, 0);
+			fcntl(z, F_SETFL, val | O_NONBLOCK);
+			
+		}
+		else {
+			close(z);
+		}
+	}
+	
+	/// process data from local clients
+	vector< pair<int, Link*> >::iterator it = self.local_clients.begin();
+	while(it != self.local_clients.end()){
+		int sock = (*it).first;
+		Link *link = (*it).second;
+		int rs;
+		//if(select_socket(sock, 10) <= 0) continue;
+		
+		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
+			LNK_send(*link, buf, rs);
+		} 
+		if(rs == 0){ // disconnected
+			perror("receive data");
+			vector< pair<int, Link*> >::iterator next = it + 1;
+			close(sock);
+			NET_free(link);
+			it = self.local_clients.erase(it);
+			continue;
+		}
+		if((rs = LNK_recv(*link, buf, SOCKET_BUF_SIZE))>0){
+			LOG("sending "<<rs<<" bytes to socks connection!");
+			if((rs = send(sock, buf, rs, MSG_NOSIGNAL))<0){
+				
+			}
+		}
+		it++;
 		// try receiving data
 	}
 }
@@ -107,7 +157,8 @@ int _socks_listen(Service &self, const char *host, uint16_t port){
 	struct sockaddr_in adr_srvr;  
 	int len_inet;  
 	int val;
-
+	string str;
+	
 	s = socket(PF_INET,SOCK_STREAM,0);  
 	if ( s == -1 )  {
 		SOCK_ERROR("socket()"); 
@@ -141,6 +192,7 @@ int _socks_listen(Service &self, const char *host, uint16_t port){
 	
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
+
 	
 	self.local_socket = s;
 	return 1;

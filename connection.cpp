@@ -52,8 +52,8 @@ static void _con_on_data_received(Connection &self, const char *data, size_t siz
 void CON_init(Connection &self, bool client){
 	self.ssl = 0;
 	self.ctx = 0;
-	self._next = 0;
-	self._prev = 0;
+	self._output = 0;
+	self._input = 0;
 	self.is_client = client;
 	
 	/* set up the memory-buffer BIOs */
@@ -61,6 +61,11 @@ void CON_init(Connection &self, bool client){
 	self.write_buf = BIO_new(BIO_s_mem());
 	BIO_set_mem_eof_return(self.read_buf, -1);
 	BIO_set_mem_eof_return(self.write_buf, -1);
+	
+	self.in_read = BIO_new(BIO_s_mem());
+	self.in_write = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(self.in_read, -1);
+	BIO_set_mem_eof_return(self.in_write, -1);
 	
 	self.connect = _con_connect;
 	self.send = _con_send;
@@ -73,9 +78,45 @@ void CON_init(Connection &self, bool client){
 	self.bridge = _con_bridge;
 	self.close = _con_close;
 	self.on_data_received = _con_on_data_received;
+	
+	self.state = CON_STATE_INITIALIZED;
 }
 
 void CON_shutdown(Connection &self){
+	LOG("[connection] closing "<<self.host<<":"<<self.port);
 	
+	if(self.close)
+		self.close(self);
+		
+	if(self.ssl){
+		SSL_shutdown(self.ssl);
+		SSL_free(self.ssl);
+		if(self.ctx)
+			SSL_CTX_free(self.ctx);
+	}
+	if(self._output){
+		self._output->_input = 0;
+		NET_free(self._output);
+	}
+	if(self._input){
+		self._input->_output = 0;
+		NET_free(self._input);
+	}
+	
+	if(self.socket)
+		close(self.socket);
+	
+	self.ssl = 0;
+	self.ctx = 0;
+	self._output = 0;
+	self._input = 0;
+	self.socket = 0;
 }
 
+void CON_close(Connection &self){
+	if(self._output)
+		CON_close(*self._output);
+	if(self._input)
+		CON_close(*self._input);
+	self.state = CON_STATE_DISCONNECTED;
+}

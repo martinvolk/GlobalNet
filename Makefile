@@ -8,7 +8,7 @@ ifndef arch
    arch = IA32
 endif
 
-CCFLAGS = -Wall -D$(os) -I./udt/ -finline-functions -fstack-protector-all -O0 -g3 -ggdb3
+CCFLAGS = -Wall -D$(os) -I./udt/ -finline-functions -fstack-check -fstack-protector-all -O0 -g3 -ggdb3
 
 ifeq ($(arch), IA32)
    CCFLAGS += -DIA32 #-mcpu=pentiumpro -march=pentiumpro -mmmx -msse
@@ -45,7 +45,7 @@ all: $(APP)
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-gclient: gclient.o socks.o console.o connection.o peer_connection.o ssl_connection.o tcp_connection.o udt_connection.o
+gclient: gclient.o socks.o console.o connection.o peer.o ssl.o tcp.o udt.o bridge.o link.o
 	$(C++) $^ -g -o $@ $(LDFLAGS)
 clean:
 	rm -f *.o $(APP)

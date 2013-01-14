@@ -101,10 +101,11 @@ static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	// set non blocking
 	UDT::setsockopt(client, 0, UDT_RCVSYN, new bool(false), sizeof(bool));
 	
-	LOG("[udt] connected to "<<hostname<<port);
+	LOG("[udt] connected to "<<hostname<<":"<<port);
 	
 	self.socket = client; 
-	strncpy(self.host, hostname, sizeof(self.host));
+	string host = string("")+hostname;
+	strncpy(self.host, host.c_str(), host.length());
 	self.port = port;
 	
 	self.state = CON_STATE_ESTABLISHED;
@@ -123,7 +124,26 @@ static void _udt_run(Connection &self){
 	int rc;
 	
 	//LOG("[udt] run "<<self.host<<":"<<self.port);
-	
+	/*
+	int rc;
+	rc = recv(s, buf, buffersize, 0);
+	if (rc == 0)
+	{
+			// socket closed by remote host
+			close(s); s=-1;
+	}
+	else if ((rc == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)) )
+	{
+		 // need to wait.  Call select() or poll()
+	}
+	else if (rc == -1)
+	{
+			close(s); s=-1;
+	}
+	else
+	{
+			ProcessNewData(s, buffer, rc);
+	}*/
 	// send/recv data
 	while(!BIO_eof(self.write_buf)){
 		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
@@ -135,7 +155,14 @@ static void _udt_run(Connection &self){
 		//LOG("UDT: received "<<rc<<" bytes of data!");
 		BIO_write(self.read_buf, tmp, rc);
 	}
-	
+	// if disconnected
+	if (UDT::ERROR == rc)
+		{
+			if(self.is_client && self.state != CON_STATE_LISTENING && UDT::getlasterror().getErrorCode() == 2002){
+				LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
+				CON_close(self);
+			}
+		}
 }
 int _udt_listen(Connection &self, const char *host, uint16_t port){
 	if(self.state != CON_STATE_UNINITIALIZED && self.state != CON_STATE_DISCONNECTED){
@@ -188,6 +215,9 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
 	self.state = CON_STATE_LISTENING;
+	string str = string("")+host;
+	memcpy(self.host, str.c_str(), min(ARRSIZE(self.host), str.length()));
+	self.port = port;
 	self.socket = socket;
 	return 1;
 }
