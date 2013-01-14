@@ -12,14 +12,14 @@ string hexencode(const char *data, size_t size){
 	std::ostringstream os;
 	os.fill('0');
 	os<<std::hex;
-	for(int c=0; c<size;c++){
+	for(uint c=0; c<size;c++){
 		unsigned char ch = data[c];
 		if(ch > 'A' && ch < 'z')
 			os<<ch;
 		else
 			os<<'.';
 	}
-	return ss.str();
+	return os.str();
 }
 /*
 void con_show_certs(Connection *c){   
@@ -58,7 +58,7 @@ static int _ssl_connect(Connection &self, const char *host, uint16_t port){
 	if(self._output){
 		stringstream ss;
 		ss<<host<<":"<<port;
-		self._output->sendCommand(*self._output, RELAY_CONNECT, ss.str().c_ptr(), ss.str().length());
+		self._output->sendCommand(*self._output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
 		
 		LOG("[ssl] sending relay connect to "<<self._output->host<<":"<<self._output->port);
 		
@@ -113,7 +113,7 @@ void _ssl_run(Connection &self){
 		// switch into handshake mode
 		self.state = CON_STATE_SSL_HANDSHAKE; 
 	}
-	if(self.state & CON_STATE_CONNECTED && self._ouput->state & CON_STATE_DISCONNECTED){
+	if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_DISCONNECTED){
 		self.state = CON_STATE_DISCONNECTED; 
 	}
 	
@@ -229,7 +229,6 @@ int CON_initSSL(Connection &self, bool client){
 	self.recv = _ssl_recv;
 	self.run = _ssl_run;
 	self.listen = _ssl_listen;
-	self.bridge = _ssl_bridge;
 	
 	//self.on_data_received = _ssl_on_data_received;
 	return 1;

@@ -5,20 +5,6 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	struct hostent *hp;
 	int s;
 	
-	// since TCP is a socket node, it does not depend on it's _output node for data
-	// instead, if it has an _ouput node, then it means that it's bridged
-	// in that case a connect means that the ouput node has to establish 
-	// a remote connection somewhere - so we forward the connect to the 
-	// _output node and exit. 
-	if(self._output){
-		LOG("[tcp] sending relay_connect.. "<<host<<":"<<port);
-		
-		stringstream ss;
-		ss<<"tcp:"<<string(host)<<string(":")<<port;
-		self._output->sendCommand(*self._output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
-		return 1;
-	}
-	
 	hp = gethostbyname(host);
 	if (hp == NULL) {
 		fprintf(stderr, "%s: unknown host\n", host);
@@ -47,6 +33,8 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	memcpy(self.host, host, min(ARRSIZE(self.host), strlen(host)));
 	self.port = port;
 	
+	// we set the state right away to established because the connect
+	// call is blocking
 	self.state = CON_STATE_ESTABLISHED;
 	LOG("[tcp] connected to "<<host<<":"<<port);
 	
@@ -82,11 +70,6 @@ static Connection *_tcp_accept(Connection &self){
 }
 
 static int _tcp_listen(Connection &self, const char *host, uint16_t port){
-	if(self.state != CON_STATE_UNINITIALIZED && self.state != CON_STATE_DISCONNECTED){
-		//cout<<"CON_listen: connection has already been initialized. Please call CON_close() before establishing a new one!"<<endl;
-		//return 0;
-	}
-	
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -146,19 +129,11 @@ close:
 }
 
 static int _tcp_recv(Connection &self, char *data, size_t size){
-	if(self._output)
-		return self._output->recv(*self._output, data, size);
 	return BIO_read(self.read_buf, data, size);
 }
 
 static int _tcp_send(Connection &self, const char *data, size_t size){
-	if(self._output)
-		return self._output->send(*self._output, data, size);
 	return BIO_write(self.write_buf, data, size);
-}
-
-static void _tcp_on_data_received(Connection &self, const char *data, size_t size){
-	BIO_write(self.read_buf, data, size);
 }
 
 static void _tcp_run(Connection &self){
@@ -166,16 +141,8 @@ static void _tcp_run(Connection &self){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	if(self.state != CON_STATE_ESTABLISHED || !self.is_client) return;
+	if(!(self.state & CON_STATE_CONNECTED)) return;
 	
-	/*
-	if(self._output && self._output->recvBlock(*self._output, pack) > 0){
-		if(pack.cmd.code == RELAY_CONNECT_OK){
-			LOG("[tcp] remote tcp connection established!");
-			self.state = CON_STATE_ESTABLISHED;
-		}
-	}
-	*/
 	// send/recv data
 	while(!BIO_eof(self.write_buf)){
 		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
@@ -190,35 +157,26 @@ static void _tcp_run(Connection &self){
 		BIO_write(self.read_buf, tmp, rc);
 	} else if(rc == 0){
 		LOG("TCP: disconnected");
-		CON_close(self);
+		self.state = CON_STATE_DISCONNECTED;
 	}
 	else if(errno != ENOTCONN && errno != EWOULDBLOCK){
 		//perror("recv");
 	}
 }
 
-static void _tcp_bridge(Connection &self, Connection *other){
-	if(self._output || other->_input){
-		ERROR("You can not bridge to a connection that is a part of another link!");
-		return;
-	}
-	
-	stringstream ss;
-	ss<<""<<other->host;
-	memcpy(self.host, ss.str().c_str(), ss.str().length());
-
-	self._output = other;
+static void _tcp_peg(Connection &self, Connection *other){
+	ERROR("TCP is an output node! it can not be pegged.");
 }
 
 static void _tcp_close(Connection &self){
 	if(self.socket)
 		close(self.socket);
+	self.state = CON_STATE_DISCONNECTED;
 }
 
 int CON_initTCP(Connection &self, bool client){
 	CON_init(self);
 	
-
 	self.connect = _tcp_connect;
 	self.accept = _tcp_accept;
 	self.send = _tcp_send;
@@ -226,8 +184,7 @@ int CON_initTCP(Connection &self, bool client){
 	self.close = _tcp_close;
 	self.listen = _tcp_listen;
 	self.run  = _tcp_run;
-	self.bridge = _tcp_bridge;
-	self.on_data_received = _tcp_on_data_received;
+	self.peg = _tcp_peg;
 	
 	return 1;
 }

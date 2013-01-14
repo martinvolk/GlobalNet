@@ -45,7 +45,7 @@ all: $(APP)
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-gclient: gclient.o socks.o console.o connection.o peer.o ssl.o tcp.o udt.o bridge.o link.o
+gclient: gclient.o socks.o console.o connection.o peer.o ssl.o tcp.o udt.o bridge.o link.o net.o
 	$(C++) $^ -g -o $@ $(LDFLAGS)
 clean:
 	rm -f *.o $(APP)

@@ -123,53 +123,35 @@ static void _udt_run(Connection &self){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	//LOG("[udt] run "<<self.host<<":"<<self.port);
-	/*
-	int rc;
-	rc = recv(s, buf, buffersize, 0);
-	if (rc == 0)
-	{
-			// socket closed by remote host
-			close(s); s=-1;
-	}
-	else if ((rc == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)) )
-	{
-		 // need to wait.  Call select() or poll()
-	}
-	else if (rc == -1)
-	{
-			close(s); s=-1;
-	}
-	else
-	{
-			ProcessNewData(s, buffer, rc);
-	}*/
-	// send/recv data
-	while(!BIO_eof(self.write_buf)){
-		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("UDT: sending "<<rc<<" bytes of data!");
-			UDT::send(self.socket, tmp, rc, 0);
-		}
-	}
-	if((rc = UDT::recv(self.socket, tmp, sizeof(tmp), 0))>0){
-		//LOG("UDT: received "<<rc<<" bytes of data!");
-		BIO_write(self.read_buf, tmp, rc);
-	}
-	// if disconnected
-	if (UDT::ERROR == rc)
-		{
-			if(self.is_client && self.state != CON_STATE_LISTENING && UDT::getlasterror().getErrorCode() == 2002){
-				LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
-				CON_close(self);
-			}
-		}
-}
-int _udt_listen(Connection &self, const char *host, uint16_t port){
-	if(self.state != CON_STATE_UNINITIALIZED && self.state != CON_STATE_DISCONNECTED){
-		//cout<<"CON_listen: connection has already been initialized. Please call CON_close() before establishing a new one!"<<endl;
-	//	return 0;
+	if(!(self.state & CON_STATE_CONNECTED)){
+		//BIO_clear(self.write_buf);
+		//BIO_clear(self.read_buf);
+		return;
 	}
 	
+	if(self.state & CON_STATE_CONNECTED){
+		// send/recv data
+		while(!BIO_eof(self.write_buf)){
+			if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+				//LOG("UDT: sending "<<rc<<" bytes of data!");
+				UDT::send(self.socket, tmp, rc, 0);
+			}
+		}
+		if((rc = UDT::recv(self.socket, tmp, sizeof(tmp), 0))>0){
+			//LOG("UDT: received "<<rc<<" bytes of data!");
+			BIO_write(self.read_buf, tmp, rc);
+		}
+		// if disconnected
+		if (UDT::ERROR == rc){
+			if(self.is_client && self.state != CON_STATE_LISTENING && UDT::getlasterror().getErrorCode() == 2002){
+				LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
+				UDT::close(self.socket);
+				self.state = CON_STATE_DISCONNECTED;
+			}
+		}
+	}
+}
+int _udt_listen(Connection &self, const char *host, uint16_t port){
 	addrinfo hints;
 	addrinfo* res;
 
@@ -221,15 +203,11 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 	self.socket = socket;
 	return 1;
 }
-void _udt_bridge(Connection &self, Connection *other){
-	ERROR("UDT_bridge not implemented!");
+void _udt_peg(Connection &self, Connection *other){
+	ERROR("UDT is an ouput node. It can not be pegged!");
 }
 void _udt_close(Connection &self){
 	UDT::close(self.socket);
-}
-
-void _udt_on_data_received(Connection &self, const char *data, size_t size){
-	ERROR("UDT_data_received not implemented!");
 }
 
 int CON_initUDT(Connection &self, bool client){
@@ -241,9 +219,8 @@ int CON_initUDT(Connection &self, bool client){
 	self.listen = _udt_listen;
 	self.accept = _udt_accept;
 	self.run = _udt_run;
-	self.bridge = _udt_bridge;
+	self.peg = _udt_peg;
 	self.close = _udt_close;
-	self.on_data_received = _udt_on_data_received;
 	
 	return 1;
 }

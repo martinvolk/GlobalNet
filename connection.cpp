@@ -21,12 +21,8 @@ static int _con_recv(Connection &self, char *data, size_t size){
 	return -1;
 }
 
-static int _con_recv_block(Connection &self, Packet &pack){
-	ERROR("CON_recvBlock not implemented!");
-	return -1;
-}
 
-static int _con_send_block(Connection &self, const Packet &pack){
+static int _con_send_command(Connection &self, ConnectionMessage msg, const char *data, size_t size){
 	ERROR("CON_writeBlock not implemented!");
 	return -1;
 }
@@ -38,15 +34,11 @@ static int _con_listen(Connection &self, const char *host, uint16_t port){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }
-static void _con_bridge(Connection &self, Connection *other){
+static void _con_peg(Connection &self, Connection *other){
 	ERROR("CON_bridge not implemented!");
 }
 static void _con_close(Connection &self){
 	ERROR("CON_close not implemented!");
-}
-
-static void _con_on_data_received(Connection &self, const char *data, size_t size){
-	ERROR("CON_data_received not implemented!");
 }
 
 void CON_init(Connection &self, bool client){
@@ -70,14 +62,12 @@ void CON_init(Connection &self, bool client){
 	self.connect = _con_connect;
 	self.send = _con_send;
 	self.recv = _con_recv;
-	self.recvBlock = _con_recv_block;
-	self.sendBlock = _con_send_block;
+	self.sendCommand = _con_send_command;
 	self.listen = _con_listen;
 	self.accept = _con_accept;
 	self.run = _con_run;
-	self.bridge = _con_bridge;
+	self.peg = _con_peg;
 	self.close = _con_close;
-	self.on_data_received = _con_on_data_received;
 	
 	self.state = CON_STATE_INITIALIZED;
 }
@@ -111,12 +101,4 @@ void CON_shutdown(Connection &self){
 	self._output = 0;
 	self._input = 0;
 	self.socket = 0;
-}
-
-void CON_close(Connection &self){
-	if(self._output)
-		CON_close(*self._output);
-	if(self._input)
-		CON_close(*self._input);
-	self.state = CON_STATE_DISCONNECTED;
 }

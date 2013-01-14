@@ -14,6 +14,8 @@ string con_state_to_string(ConnectionState state){
 	switch(state){
 		case CON_STATE_UNINITIALIZED:
 			return "CON_STATE_UNINITIALIZED";
+		case CON_STATE_INITIALIZED: 
+			return "CON_STATE_INITIALIZED";
 		case CON_STATE_CONNECTING:
 			return "CON_STATE_CONNECTING";
 		case CON_STATE_LISTENING:
@@ -24,8 +26,8 @@ string con_state_to_string(ConnectionState state){
 			return "CON_STATE_RELAY_PENDING";
 		case CON_STATE_ESTABLISHED:
 			return "CON_STATE_ESTABLISHED";
-		case CON_STATE_CLOSE_PENDING:
-			return "CON_STATE_CLOSE_PENDING";
+		case CON_STATE_WAIT_CLOSE:
+			return "CON_STATE_WAIT_CLOSE";
 		case CON_STATE_DISCONNECTED:
 			return "CON_STATE_DISCONNECTED";
 	}

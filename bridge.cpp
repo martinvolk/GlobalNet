@@ -22,23 +22,13 @@ static int _bridge_recv(Connection &self, char *data, size_t size){
 	return -1;
 }
 
-static int _bridge_recv_block(Connection &self, Packet &pack){
-	ERROR("CON_recvBlock not implemented!");
-	return -1;
-}
-
-static int _bridge_send_block(Connection &self, const Packet &pack){
-	ERROR("CON_writeBlock not implemented!");
-	return -1;
-}
-
 static void _bridge_run(Connection &self){
 	// if we are still disconnected and our monitored connection has switched to connected state
 	// then we have to notify our input of the change by sending the RELAY_CONNECT_OK command. 
 	if(self._output){
 		if(!(self.state & CON_STATE_CONNECTED) && self._output->state & CON_STATE_CONNECTED){
 			if(self._input){
-				self._input->sendCommand(self._input, RELAY_CONNECT_OK, "", 0);
+				self._input->sendCommand(*self._input, RELAY_CONNECT_OK, "", 0);
 			}
 			self.state = CON_STATE_ESTABLISHED; 
 		}
@@ -47,7 +37,7 @@ static void _bridge_run(Connection &self){
 		// cleaned up after all other loops have run next time. 
 		if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_INVALID){
 			if(self._input){
-				self._input->close(self._input);
+				self._input->close(*self._input);
 			}
 			self.state = CON_STATE_DISCONNECTED;
 		}
@@ -72,15 +62,11 @@ static int _bridge_listen(Connection &self, const char *host, uint16_t port){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }
-static void _bridge_bridge(Connection &self, Connection *other){
+static void _bridge_peg(Connection &self, Connection *other){
 	ERROR("CON_bridge not implemented!");
 }
 static void _bridge_close(Connection &self){
 	ERROR("CON_close not implemented!");
-}
-
-static void _bridge_on_data_received(Connection &self, const char *data, size_t size){
-	ERROR("CON_data_received not implemented!");
 }
 
 void CON_initBRIDGE(Connection &self, bool client){
@@ -89,14 +75,10 @@ void CON_initBRIDGE(Connection &self, bool client){
 	self.connect = _bridge_connect;
 	self.send = _bridge_send;
 	self.recv = _bridge_recv;
-	self.recvBlock = _bridge_recv_block;
-	self.sendBlock = _bridge_send_block;
 	self.listen = _bridge_listen;
 	self.accept = _bridge_accept;
 	self.run = _bridge_run;
-	self.bridge = _bridge_bridge;
 	self.close = _bridge_close;
-	self.on_data_received = _bridge_on_data_received;
 }
 
 

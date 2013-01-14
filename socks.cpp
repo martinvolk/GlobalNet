@@ -9,24 +9,6 @@ In local model we can have a socket where we accept connections and forward
 data to the remote end. On the remote end we can have a socket that connects 
 to another host and relays information from that connection. **/
 
-static int select_socket(int socket, uint time_usec){
-	fd_set set;
-	struct timeval timeout;
-
-	/* Initialize the file descriptor set. */
-	FD_ZERO (&set);
-	FD_SET (socket, &set);
-
-	/* Initialize the timeout data structure. */
-	timeout.tv_sec = 0;
-	timeout.tv_usec = time_usec;
-
-	/* select returns 0 if timeout, 1 if input available, -1 if error. */
-	return select (FD_SETSIZE,
-																		&set, NULL, NULL,
-																		&timeout);
-}
-
 static void _socks_run(Service &self){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
@@ -87,7 +69,7 @@ static void _socks_run(Service &self){
 		stringstream ss;
 		ss<<host<<":"<<port;
 		
-		Link *link = 0;
+		Connection *link = 0;
 		/*if(self._cache.find(ss.str()) != self._cache.end()){
 			(Link*)self._cache[ss.str()]
 			link = (Link*)self._cache[ss.str()];
@@ -101,7 +83,6 @@ static void _socks_run(Service &self){
 			/// send success packet to the connected client
 			socks.code = 0;
 			socks.atype = 1;
-			short nport = htons(0);
 			in_addr a;
 			inet_aton("127.0.0.1", &a);
 			memset(socks.data, 0, 6);
@@ -109,7 +90,7 @@ static void _socks_run(Service &self){
 			//memcpy(socks.data+4, &nport, 2);
 			send(z, &socks, 10, 0);
 			
-			self.local_clients.push_back(pair<int, Link*>(z, link));
+			self.local_clients.push_back(pair<int, Connection*>(z, link));
 			
 			
 			val = fcntl(z, F_GETFL, 0);
@@ -122,25 +103,24 @@ static void _socks_run(Service &self){
 	}
 	
 	/// process data from local clients
-	vector< pair<int, Link*> >::iterator it = self.local_clients.begin();
+	vector< pair<int, Connection*> >::iterator it = self.local_clients.begin();
 	while(it != self.local_clients.end()){
 		int sock = (*it).first;
-		Link *link = (*it).second;
+		Connection *link = (*it).second;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
 		
 		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
-			LNK_send(*link, buf, rs);
+			link->send(*link, buf, rs);
 		} 
 		if(rs == 0){ // disconnected
 			perror("receive data");
-			vector< pair<int, Link*> >::iterator next = it + 1;
 			close(sock);
 			NET_free(link);
 			it = self.local_clients.erase(it);
 			continue;
 		}
-		if((rs = LNK_recv(*link, buf, SOCKET_BUF_SIZE))>0){
+		if((rs = link->recv(*link, buf, SOCKET_BUF_SIZE))>0){
 			LOG("sending "<<rs<<" bytes to socks connection!");
 			if((rs = send(sock, buf, rs, MSG_NOSIGNAL))<0){
 				

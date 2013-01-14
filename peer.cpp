@@ -16,7 +16,7 @@ int _peer_connect(Connection &self, const char *hostname, uint16_t port){
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
 	self.state = CON_STATE_CONNECTING;
-	self._output->connect(*self._output, hostname, port));
+	self._output->connect(*self._output, hostname, port);
 	
 	return 1;
 }
@@ -41,7 +41,7 @@ Connection *_peer_accept(Connection &self){
 		// it will become connected once "peer" has become connected. 
 		// although in some cases the peer may already be in a connected state
 		// so just in case... 
-		if(!(peer.state & CON_STATE_CONNECTED))
+		if(!(peer->state & CON_STATE_CONNECTED))
 			con->state = CON_STATE_CONNECTING;
 		else
 			con->state = CON_STATE_ESTABLISHED;
@@ -110,36 +110,30 @@ int _peer_send_command(Connection &self, ConnectionMessage cmd, const char *data
 	// down the network in the main loop. inserts a command into the stream. 
 	Packet pack; 
 	pack.cmd.code = cmd;
-	pack.data.resize(size);
 	/// hmm? can we be sure that this will never overflow? what if resize() fails?
-	memcpy(&pack.data[0], data, size); 
+	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), size)); 
 	return BIO_write(self.write_buf, pack.c_ptr(), pack.size());
 }
 
 /*** sets up this connection so that it's output is sent to "other"
 // instead of the default UDT socket. 
 ***/
-/*
-static void _peer_bridge(Connection &self, Connection *other){
-	if(!self._output || !self._output->_output)
-		return;
-	if(other->_input){
-		ERROR("You can not bridge to a connection that is a part of another link!");
-		return;
-	}
-	Connection *udt = self._output->_output;
+
+static void _peer_peg(Connection &self, Connection *other){
+	// this function pegs the output of our SSL node as input to another node 
+	// we need to override the default function because we have a custom structure
 	
 	// close the udt connection and connect the output of the 
 	// ssl connection to the input of this peer 
+	Connection *udt = self._output->_output;
 	udt->close(*udt); 
-	udt->initialized = false;
+	NET_free(udt);
 	
 	// now bridge the end of the ssl connection with 
-	self._output->bridge(*self._output, other);
+	self._output->_output = other;
 	other->_input = self._output;
-	//self._output->state = CON_STATE_SSL_HANDSHAKE;
 }
-*/
+
 
 /**
 This function handles incoming packets received from _output node. 
@@ -184,7 +178,7 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 			host = tokens[0];
 			port = atoi(tokens[1].c_str());
 		}
-		int ret; 
+		
 		stringstream err;
 		
 		LOG("[relay] connecting to: "<<host<<":"<<port);
@@ -199,15 +193,15 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 		// have no idea about it because it is only responsible for monitoring
 		// it's _output. A bridge will monitor the connection state and appropriately
 		// send a disconnect to the other node that is connected to it. 
-		Connection *other = NET_createConnection(*self.net, proto, true);
+		Connection *other = NET_createConnection(*self.net, proto.c_str(), true);
 		Connection *bridge = NET_allocConnection(*self.net);
 		CON_initBRIDGE(*bridge, true);
 		
 		other->connect(*other, host.c_str(), port);
 		
 		// self<->bridge<->other
-		bridge->_input = self;
-		self->_input = bridge; 
+		bridge->_input = &self;
+		self._input = bridge; 
 		bridge->_output = other; 
 		other->_input = bridge;
 	}
@@ -335,7 +329,7 @@ int CON_initPeer(Connection &self, bool client, Connection *ssl){
 	self.sendCommand = _peer_send_command;
 	self.listen = _peer_listen;
 	self.run = _peer_run;
-	self.bridge = _peer_bridge;
+	self.peg = _peer_peg;
 	self.close = _peer_close;
 	//self.on_data_received = _peer_on_data_received;
 	return 1;

@@ -44,7 +44,7 @@ Service *NET_allocService(Network &self){
 }
 
 void NET_free(Link *link){
-	LNK_shutdown(*link);
+	//LNK_shutdown(*link);
 	link->initialized = false;
 }
 
@@ -73,9 +73,10 @@ Establish a link through the nodes specified in path.
 Path: [ip:port]>[ip:port]
 **/
 
-Link *NET_createLink(Network &self, const string &path){
+Connection *NET_createLink(Network &self, const string &path){
 	vector<string> tokens;
-	Link *link = NET_allocLink(self);
+	Connection *link = NET_allocConnection(self);
+	CON_initLINK(*link);
 	
 	tokenize(path, ">", tokens);
 	//Connection *prev_con = 0 ;
@@ -100,21 +101,21 @@ Link *NET_createLink(Network &self, const string &path){
 			//port = peer->socket->port;
 		} 
 		LOG("[link] establishing intermediate connection to "<<host<<":"<<port);
-		LNK_connect(*link, host, port, REL_PROTO_INTERNAL_CLIENT);
+		link->connect(*link, host.c_str(), port);
 	}
 	return link;
 }
 
-Link * NET_createTunnel(Network &self, const string &host, uint16_t port) {
-	Link *link = NET_createLink(self, "*");
+Connection * NET_createTunnel(Network &self, const string &host, uint16_t port) {
+	Connection *link = NET_createLink(self, "*");
 	if(link){
-		LNK_connect(*link, host, port, REL_PROTO_TCP);
+		link->connect(*link, host.c_str(), port);
 		return link;
 	}
 	return 0;
 }
 
-int net_init(Network &self){
+int NET_init(Network &self){
 	SSL_library_init();
 	SSL_load_error_strings();
 	ERR_load_BIO_strings(); 
@@ -140,7 +141,7 @@ int net_init(Network &self){
 		}
 	}
 	
-	return 0;
+	return 1;
 }
 
 Connection *NET_connect(Network &self, const char *hostname, int port){
@@ -154,13 +155,7 @@ Connection *NET_connect(Network &self, const char *hostname, int port){
 	return conn;
 }
 
-int net_run(Network &self) {
-	// flush all links
-	for(uint c =0;c<ARRSIZE(self.links); c++){
-		if(self.links[c].initialized)
-			LNK_run(self.links[c]);
-	}
-	
+int NET_run(Network &self) {
 	// run all services
 	for(uint c=0;c<ARRSIZE(self.services); c++){
 		if(self.services[c].initialized)
@@ -195,11 +190,8 @@ int net_run(Network &self) {
 	return 0;
 }
 
-int check_arg(const option::Option& option, bool msg){
-	return option::ARG_OK;
-}
 
-Link *NET_createCircuit(Network &self, unsigned int length = 3){
+Connection *NET_createCircuit(Network &self, unsigned int length = 3){
 	stringstream ss;
 	for(unsigned int c = 0;c<length;c++){
 		ss<<"*";
@@ -207,7 +199,7 @@ Link *NET_createCircuit(Network &self, unsigned int length = 3){
 			ss<<">";	
 	}
 	
-	Link *link = NET_createLink(self, ss.str());
+	Connection *link = NET_createLink(self, ss.str());
 	return link;
 }
 
@@ -271,18 +263,12 @@ Service *NET_createService(Network &self, const char *name){
 }
 
 void NET_shutdown(Network &self){
-	// flush all links
-	for(uint c =0;c<ARRSIZE(self.links); c++){
-		if(self.links[c].initialized)
-			LNK_shutdown(self.links[c]);
-	}
-	
-	// run all services
+	// close services
 	for(uint c=0;c<ARRSIZE(self.services); c++){
-		if(self.services[c].initialized)
-			SRV_shutdown(self.services[c]);
+		//if(self.services[c].initialized)
+			//SRV_shutdown(self.services[c]);
 	}
-	// send / recv data from all connections
+	// close connections
 	for(uint c=0;c<ARRSIZE(self.sockets); c++){
 		if(self.sockets[c].initialized)
 			CON_shutdown(self.sockets[c]);

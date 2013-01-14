@@ -217,15 +217,13 @@ struct Connection{
 	int (*connect)(Connection &self, const char *host, uint16_t port);
 	int (*send)(Connection &self, const char *data, size_t size);
 	int (*recv)(Connection &self, char *data, size_t size);
-	int (*sendCommand)(Connection &self, ConnectionMessage &cmd, const char *data, size_t size);
+	int (*sendCommand)(Connection &self, ConnectionMessage cmd, const char *data, size_t size);
 	//int (*recvBlock)(Connection &self, Packet &pack);
 	int (*listen)(Connection &self, const char *host, uint16_t port);
 	Connection* (*accept)(Connection &self);
 	void (*run)(Connection &self);
-	void (*bridge)(Connection &self, Connection *other);
+	void (*peg)(Connection &self, Connection *other);
 	void (*close)(Connection &self);
-	
-	void (*on_data_received)(Connection &self, const char *data, size_t size);
 };
 
 
@@ -292,7 +290,7 @@ struct Service{
 	// on client side 
 	Link *server_link;  // link through which we can reach the other end
 	int local_socket; // socket of the local connections
-	vector< pair<int, Link*> > local_clients;
+	vector< pair<int, Connection*> > local_clients;
 	map<string, void*> _cache;
 	
 	Connection *socket;
@@ -321,12 +319,6 @@ struct Application{
 	Network net;
 };
 
-
-int LNK_connect(Link &self, const string &host, int port, RelayProtocol proto);
-int LNK_send(Link &self, const char *data, size_t size);
-int LNK_recv(Link &self, char *data, size_t size);
-void LNK_shutdown(Link &self);
-
 void SRV_initSOCKS(Service &self);
 void SRV_initCONSOLE(Service &self);
 Connection *SRV_accept(Service &self);
@@ -334,15 +326,21 @@ Connection *SRV_accept(Service &self);
 int CON_initPeer(Connection &self, bool client = true, Connection *output = 0);
 int CON_initSSL(Connection &self, bool client = true);
 int CON_initTCP(Connection &self, bool client = true);
+void CON_initLINK(Connection &self, bool client = true);
 int CON_initUDT(Connection &self, bool client = true);
 void CON_initBRIDGE(Connection &self, bool client = true);
 void CON_init(Connection &self, bool client = true);
 void CON_shutdown(Connection &self);
-void CON_close(Connection &self);
+
+int NET_init(Network &self);
+Connection *NET_connect(Network &self, const char *hostname, int port);
+int NET_run(Network &self);
+void NET_shutdown(Network &self);
 
 Connection *NET_allocConnection(Network &self);
 Connection *NET_createConnection(Network &self, const char *name, bool client);
-Link * NET_createTunnel(Network &self, const string &host, uint16_t port);
+Connection *NET_createTunnel(Network &self, const string &host, uint16_t port);
+Service *NET_createService(Network &self, const char *name);
 
 void NET_free(Link *link);
 void NET_free(Connection *con);
