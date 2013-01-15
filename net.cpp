@@ -82,7 +82,7 @@ Connection *NET_createLink(Network &self, const string &path){
 			// pick random host from already connected peers (in the future make it pick from "known peers")
 			Peer *peer = NET_getRandomPeer(self);
 			if(!peer){
-				ERROR("Link: could not create linkNo peers connected!");
+				ERROR("Link: could not create link! No peers connected!");
 				return 0;
 			}
 			host = peer->socket->host;
@@ -97,7 +97,7 @@ Connection *NET_createLink(Network &self, const string &path){
 }
 
 Connection * NET_createTunnel(Network &self, const string &host, uint16_t port) {
-	Connection *link = NET_createLink(self, "*");
+	Connection *link = NET_createLink(self, "*>*");
 	if(link){
 		stringstream ss;
 		ss<<"tcp:"<<host<<":"<<port;
@@ -225,7 +225,7 @@ Connection *NET_createConnection(Network &self, const char *name, bool client){
 	else if(strcmp(name, "tcp")==0){
 		CON_initTCP(*con, client);
 	}
-	else if(strcmp(name, "udp")==0){
+	else if(strcmp(name, "udt")==0){
 		CON_initUDT(*con, client);
 	}
 	else if(strcmp(name, "ssl")==0){

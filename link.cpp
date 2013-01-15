@@ -38,7 +38,7 @@ static int _lnk_connect(Connection &self, const char *hostname, uint16_t port){
 		self._output->sendCommand(*self._output, RELAY_CONNECT, hostname, strlen(hostname));
 	}
 	else if(proto.compare("peer")==0){
-		LOG("LINK: adding a new encryption layer to connection!");
+		LOG("LINK: connecting to new node: "<<host<<":"<<port);
 		// peg a peer on top of the current connection and issue a connect
 		Connection *peer = NET_allocConnection(*self.net);
 		CON_initPeer(*peer);

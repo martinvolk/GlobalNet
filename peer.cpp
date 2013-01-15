@@ -16,7 +16,13 @@ int _peer_connect(Connection &self, const char *hostname, uint16_t port){
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
 	self.state = CON_STATE_CONNECTING;
-	self._output->_output->connect(*self._output->_output, hostname, port);
+	if(self._output->_output->type == NODE_PEER){
+		stringstream ss;
+		ss<<"udt:"<<hostname<<":"<<port;
+		self._output->_output->sendCommand(*self._output->_output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+	}
+	else
+		self._output->_output->connect(*self._output->_output, hostname, port);
 	
 	return 1;
 }
