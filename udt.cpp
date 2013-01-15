@@ -143,12 +143,10 @@ static void _udt_run(Connection &self){
 			BIO_write(self.read_buf, tmp, rc);
 		}
 		// if disconnected
-		if (UDT::ERROR == rc){
-			if(self.is_client && self.state != CON_STATE_LISTENING && UDT::getlasterror().getErrorCode() == 2002){
-				LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
-				UDT::close(self.socket);
-				self.state = CON_STATE_DISCONNECTED;
-			}
+		if(UDT::getsockstate(self.socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
+			LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
+			//UDT::close(self.socket);
+			self.state = CON_STATE_DISCONNECTED;
 		}
 	}
 }
@@ -207,8 +205,19 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 void _udt_peg(Connection &self, Connection *other){
 	ERROR("UDT is an ouput node. It can not be pegged!");
 }
+
 void _udt_close(Connection &self){
+	char tmp[SOCKET_BUF_SIZE];
+	int rc;
+	
+	while(!BIO_eof(self.write_buf)){
+		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			UDT::send(self.socket, tmp, rc, 0);
+		}
+	}
+	LOG("UDT: disconnected!");
 	UDT::close(self.socket);
+	self.state = CON_STATE_DISCONNECTED;
 }
 
 int CON_initUDT(Connection &self, bool client){

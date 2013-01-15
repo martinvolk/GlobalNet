@@ -96,13 +96,14 @@ static void _lnk_run(Connection &self){
 			LOG("LINK: received "<<rc<<" bytes of data!");
 			BIO_write(self.read_buf, tmp, rc);
 		}
-		// if disconnected
-		if (UDT::ERROR == rc){
-			if(self.is_client && self.state != CON_STATE_LISTENING && UDT::getlasterror().getErrorCode() == 2002){
-				LOG("LINK DISCONNECTED: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
-				self.state = CON_STATE_DISCONNECTED;
-			}
-		}
+	}
+	
+	// we always should check whether the output has closed so that we can graciously 
+	// switch state to closed of our connection as well. The other connections 
+	// that are pegged on top of this one will do the same. 
+	if(self._output && self._output->state & CON_STATE_DISCONNECTED){
+		LOG("LINK: underlying connection lost. Disconnected!");
+		self.state = CON_STATE_DISCONNECTED;
 	}
 }
 static int _lnk_listen(Connection &self, const char *host, uint16_t port){
@@ -114,10 +115,19 @@ static void _lnk_peg(Connection &self, Connection *other){
 }
 
 static void _lnk_close(Connection &self){
-	// signal a close to the remote connection
-	if(self._output)
-		self._output->close(*self._output);
-		
+	if(!self._output){
+		self.state = CON_STATE_DISCONNECTED;
+		return;
+	}
+	
+	while(!BIO_eof(self.write_buf)){
+		char tmp[SOCKET_BUF_SIZE];
+		int rc;
+		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			self._output->send(*self._output, tmp, rc);
+		}
+	}
+	self._output->close(*self._output);
 	self.state = CON_STATE_WAIT_CLOSE;
 }
 

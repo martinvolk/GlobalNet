@@ -1,5 +1,17 @@
 #include "gclient.h"
 
+static int socket_writable(int socket){
+	fd_set fdset;
+	FD_ZERO(&fdset);
+	FD_SET(socket, &fdset);
+	
+	timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 10;
+	
+	return select(1, 0, &fdset, 0, &tv);
+}
+
 static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	struct sockaddr_in server;
 	struct hostent *hp;
@@ -19,24 +31,20 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 		perror("socket");
 		return 0;
 	}
-	/* Connect does the bind for us */
-	if (connect(s, (struct sockaddr *)&server, sizeof(server)) < 0) {
-		perror("connect");
-		return 0;
-	}
+	
+	connect(s, (struct sockaddr *)&server, sizeof(server));
 	
 	int val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	self.socket = s;
-	
 	memcpy(self.host, host, min(ARRSIZE(self.host), strlen(host)));
 	self.port = port;
+		
+	self.socket = s;
 	
 	// we set the state right away to established because the connect
 	// call is blocking
 	self.state = CON_STATE_ESTABLISHED;
-	LOG("[tcp] connected to "<<host<<":"<<port);
 	
 	return s;
 }
@@ -140,27 +148,33 @@ static void _tcp_run(Connection &self){
 	Packet pack;
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
+	/*
+	if(self.state & CON_STATE_CONNECTING && socket_writable(self.socket)>0){
+		self.state = CON_STATE_ESTABLISHED;
 	
-	if(!(self.state & CON_STATE_CONNECTED)) return;
-	
-	// send/recv data
-	while(!BIO_eof(self.write_buf)){
-		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			LOG("TCP: sending "<<rc<<" bytes of data to "<<self.host<<":"<<self.port);
-			if((rc = send(self.socket, tmp, rc, MSG_NOSIGNAL))<0){
-				perror("TCP send");
+		LOG("[tcp] connected to "<<self.host<<":"<<self.port);
+	}*/
+	if(self.state & CON_STATE_CONNECTED){
+		// send/recv data
+		while(!BIO_eof(self.write_buf)){
+			if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+				LOG("TCP: sending "<<rc<<" bytes of data to "<<self.host<<":"<<self.port);
+				if((rc = send(self.socket, tmp, rc, MSG_NOSIGNAL))<0){
+					perror("TCP send");
+				}
 			}
 		}
-	}
-	if((rc = recv(self.socket, tmp, sizeof(tmp), 0))>0){
-		LOG("TCP: received "<<rc<<" bytes of data!");
-		BIO_write(self.read_buf, tmp, rc);
-	} else if(rc == 0){
-		LOG("TCP: disconnected");
-		self.state = CON_STATE_DISCONNECTED;
-	}
-	else if(errno != ENOTCONN && errno != EWOULDBLOCK){
-		//perror("recv");
+		if((rc = recv(self.socket, tmp, sizeof(tmp), 0))>0){
+			LOG("TCP: received "<<rc<<" bytes of data!");
+			BIO_write(self.read_buf, tmp, rc);
+		} else if(rc == 0){
+			LOG("TCP: disconnected");
+			close(self.socket);
+			self.state = CON_STATE_DISCONNECTED;
+		}
+		else if(errno != ENOTCONN && errno != EWOULDBLOCK){
+			//perror("recv");
+		}
 	}
 }
 
@@ -169,8 +183,16 @@ static void _tcp_peg(Connection &self, Connection *other){
 }
 
 static void _tcp_close(Connection &self){
-	if(self.socket)
-		close(self.socket);
+	char tmp[SOCKET_BUF_SIZE];
+	int rc;
+	
+	while(!BIO_eof(self.write_buf)){
+		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			send(self.socket, tmp, rc, MSG_NOSIGNAL);
+		}
+	}
+	close(self.socket);
+	LOG("TCP: disconnected!");
 	self.state = CON_STATE_DISCONNECTED;
 }
 
@@ -183,10 +205,10 @@ int CON_initTCP(Connection &self, bool client){
 	self.accept = _tcp_accept;
 	self.send = _tcp_send;
 	self.recv = _tcp_recv;
-	self.close = _tcp_close;
 	self.listen = _tcp_listen;
 	self.run  = _tcp_run;
 	self.peg = _tcp_peg;
+	self.close = _tcp_close;
 	
 	return 1;
 }

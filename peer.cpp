@@ -65,17 +65,6 @@ static int _peer_listen(Connection &self, const char *host, uint16_t port){
 	return self._output->listen(*self._output, host, port);
 }
 
-void _peer_close(Connection &self){
-	// closing a connection means sending out a "close" request down the chain
-	// once the connection has been closed, the _output node will set it's 
-	// state to CON_STATE_DISCONNECTED. For now we simply go into waiting state. 
-	if(!self._output)
-		return; 
-	
-	self._output->close(*self._output);
-	self.state = CON_STATE_WAIT_CLOSE;
-}
-
 
 /**
 This function packs all data as DATA packet and sends it over to the other peer
@@ -128,7 +117,6 @@ static void _peer_peg(Connection &self, Connection *other){
 	// ssl connection to the input of this peer 
 	Connection *udt = self._output->_output;
 	udt->close(*udt); 
-	NET_free(udt);
 	
 	// now bridge the end of the ssl connection with 
 	self._output->_output = other;
@@ -235,7 +223,7 @@ void _peer_run(Connection &self){
 		self.state = CON_STATE_CONNECTED;
 	}
 	// handle data flow if we are connected to a peer. 
-	if(self.state & CON_STATE_ESTABLISHED){
+	else if(self.state & CON_STATE_ESTABLISHED){
 		// we have an extra buffer where all input data is put
 		// this buffer is filled in send() function that is called by someone else
 		// all this data belongs in a DATA packet. This data could not have been
@@ -299,9 +287,30 @@ void _peer_run(Connection &self){
 			}
 		}
 	}
+	// we always should check whether the output has closed so that we can graciously 
+	// switch state to closed of our connection as well. The other connections 
+	// that are pegged on top of this one will do the same. 
+	if(self._output && self._output->state & CON_STATE_DISCONNECTED){
+		LOG("PEER: underlying connection lost. Disconnected!");
+		self.state = CON_STATE_DISCONNECTED;
+	}
 }
 
-
+static void _peer_close(Connection &self){
+	// send unsent data 
+	if(!self._output){
+		self.state = CON_STATE_DISCONNECTED;
+		return;
+	}
+	while(!BIO_eof(self.write_buf)){
+		char tmp[SOCKET_BUF_SIZE];
+		int rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE);
+		self._output->send(*self._output, tmp, rc);
+	}
+	LOG("PEER: disconnected!");
+	self._output->close(*self._output);
+	self.state = CON_STATE_WAIT_CLOSE;
+}
 int CON_initPeer(Connection &self, bool client, Connection *ssl){
 	CON_init(self);
 	
@@ -335,6 +344,7 @@ int CON_initPeer(Connection &self, bool client, Connection *ssl){
 	self.run = _peer_run;
 	self.peg = _peer_peg;
 	self.close = _peer_close;
+	
 	//self.on_data_received = _peer_on_data_received;
 	return 1;
 }

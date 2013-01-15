@@ -66,6 +66,8 @@ using namespace std;
 #define MAX_PACKET_SIZE 32768
 #define MAX_LINK_NODES 16
 
+#define CONNECTION_TIMEOUT 10000
+
 typedef struct linkaddress_t {
 	char hash[20];
 	
@@ -163,8 +165,8 @@ typedef enum{
 	CON_STATE_SSL_HANDSHAKE		= 1<<4,
 	CON_STATE_RELAY_PENDING		= 1<<5,
 	CON_STATE_ESTABLISHED			= 1<<6,
-	CON_STATE_WAIT_CLOSE		= 1<<7,
-	CON_STATE_DISCONNECTED		= 1<<8
+	CON_STATE_WAIT_CLOSE			= 1<<8,
+	CON_STATE_DISCONNECTED		= 1<<9
 }ConnectionState;
 
 #define CON_STATE_NOT_CONNECTED (CON_STATE_UNINITIALIZED|\
@@ -187,7 +189,7 @@ typedef int TCPSocket;
 typedef int UDPSocket;
 
 struct Network;
-
+    
 // peer to peer connection
 struct Connection{
 	bool initialized;
@@ -210,6 +212,8 @@ struct Connection{
 	UDTSOCKET socket; // the underlying socket for peer connection
 	char host[NI_MAXHOST];
 	int port;
+	
+	double timer; 
 	
 	ConnectionState state;
 	
@@ -353,12 +357,10 @@ Connection *NET_createConnection(Network &self, const char *name, bool client);
 Connection *NET_createTunnel(Network &self, const string &host, uint16_t port);
 Service *NET_createService(Network &self, const char *name);
 
-void NET_free(Link *link);
-void NET_free(Connection *con);
-
 Service &self_createService(Network &self, const char *name);
 Connection &self_createConnection(Network &self, const char *name, bool client);
 
+double milliseconds();
 int tokenize(const string& str,
                       const string& delimiters, vector<string> &tokens);
 string errorstring(int e);

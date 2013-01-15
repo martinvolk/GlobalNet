@@ -79,7 +79,7 @@ static void _console_run(Service &self){
 					Connection *sock = &self.net->sockets[j];
 					if(sock->initialized){
 						nc++;
-						SEND_SOCK(self.clients[c], "socket: " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
+						SEND_SOCK(self.clients[c], "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
 					}
 				}
 				for(uint j = 0;j<ARRSIZE(self.net->links);j++){

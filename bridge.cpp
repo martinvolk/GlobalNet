@@ -37,10 +37,17 @@ static void _bridge_run(Connection &self){
 		// then we just disconnect from the peer. All disconnected connections are 
 		// cleaned up after all other loops have run next time. 
 		if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_INVALID){
+			LOG("BRIDGE: connection _output disconnected!");
 			if(self._input){
 				self._input->close(*self._input);
 			}
-			LOG("BRIDGE: connection bridge disconnected!");
+			self.state = CON_STATE_DISCONNECTED;
+		}
+		if(self.state & CON_STATE_CONNECTED && self._input->state & CON_STATE_INVALID){
+			if(self._output){
+				self._output->close(*self._output);
+			}
+			LOG("BRIDGE: connection _input disconnected!");
 			self.state = CON_STATE_DISCONNECTED;
 		}
 	}

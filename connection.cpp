@@ -23,8 +23,10 @@ static int _con_recv(Connection &self, char *data, size_t size){
 
 
 static int _con_send_command(Connection &self, ConnectionMessage msg, const char *data, size_t size){
-	ERROR("CON_writeBlock not implemented!");
-	return -1;
+	// the default behavior is to simply pass the command down the line
+	if(self._output)
+		self._output->sendCommand(*self._output, msg, data, size);
+	return 1;
 }
 
 static void _con_run(Connection &self){
@@ -37,8 +39,9 @@ static int _con_listen(Connection &self, const char *host, uint16_t port){
 static void _con_peg(Connection &self, Connection *other){
 	ERROR("CON_bridge not implemented!");
 }
+
 static void _con_close(Connection &self){
-	ERROR("CON_close not implemented!");
+	ERROR("CONNECTION: close() has to be implemented!");
 }
 
 void CON_init(Connection &self, bool client){

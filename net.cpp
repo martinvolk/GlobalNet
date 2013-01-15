@@ -43,18 +43,6 @@ Service *NET_allocService(Network &self){
 	return 0;
 }
 
-void NET_free(Link *link){
-	//LNK_shutdown(*link);
-	link->initialized = false;
-}
-
-void NET_free(Connection *conn){
-	LOG("NET_free: shutting down a connection!");
-	CON_shutdown(*conn);
-	conn->initialized = false;
-}
-
-
 Peer *NET_getRandomPeer(Network &self){
 	Peer *peers[ARRSIZE(self.peers)];
 	int count = 0;
@@ -168,20 +156,19 @@ int NET_run(Network &self) {
 	
 	// send / recv data from all connections
 	for(uint c=0;c<ARRSIZE(self.sockets); c++){
-		if(self.sockets[c].initialized){
+		if(self.sockets[c].initialized)
 			self.sockets[c].run(self.sockets[c]);
-			if(self.sockets[c].state & CON_STATE_DISCONNECTED){
-				NET_free(&self.sockets[c]);
-			}
-		}
 	}
 	
+	// cleanup all unused objects
+	for(uint c=0;c<ARRSIZE(self.sockets); c++){
+		if(self.sockets[c].state & CON_STATE_DISCONNECTED)
+			self.sockets[c].initialized = false;
+	}
 	for(uint c=0;c<ARRSIZE(self.peers); c++){
 		Peer *p = &self.peers[c];
-		if(p->initialized && p->socket->state & CON_STATE_DISCONNECTED){
-			NET_free(p->socket);
+		if(p->initialized && p->socket->state & CON_STATE_DISCONNECTED)
 			p->initialized = false;
-		}
 	}
 	
 	Connection *client = 0;

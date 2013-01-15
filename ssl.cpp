@@ -116,6 +116,7 @@ void _ssl_run(Connection &self){
 		memcpy(self.host, self._output->host, ARRSIZE(self.host));
 		self.port = self._output->port;
 		
+		self.timer = milliseconds();
 		self.state = CON_STATE_SSL_HANDSHAKE; 
 	}
 	if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_DISCONNECTED){
@@ -141,6 +142,14 @@ void _ssl_run(Connection &self){
 	// check if the async handshake is completed
 	if(self.state & CON_STATE_SSL_HANDSHAKE){
 		int res;
+		
+		// sometimes the underlying connection may fail or something else 
+		// may happen that would make us forever stuck in handshake. 
+		// we need to close if we stay here for too long.. 
+		if((milliseconds()-self.timer) > CONNECTION_TIMEOUT){
+			self.close(self);
+			return;
+		}
 		if(self.is_client == true){
 			if((res = SSL_connect(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
@@ -168,7 +177,6 @@ void _ssl_run(Connection &self){
 	// if the connection has been established then we can write our input data
 	// to ssl and encode it. 
 	if(self.state & CON_STATE_ESTABLISHED){
-		// send/recv data
 		if((rc = BIO_read(self.in_write, tmp, SOCKET_BUF_SIZE))>0){
 			if((rc = SSL_write(self.ssl, tmp, rc))<=0){
 				LOG("error sending ssl to "<<self.host<<":"<<self.port<<": "<<errorstring(SSL_get_error(self.ssl, rc)));
@@ -186,10 +194,39 @@ void _ssl_run(Connection &self){
 			
 			LOG(hexencode(tmp, rc));
 		}
-		
+	}
+	
+	// we always should check whether the output has closed so that we can graciously 
+	// switch state to closed of our connection as well. The other connections 
+	// that are pegged on top of this one will do the same. 
+	if(self._output && self._output->state & CON_STATE_DISCONNECTED){
+		LOG("SSL: underlying connection lost. Disconnected!");
+		self.state = CON_STATE_DISCONNECTED;
 	}
 }
 
+static void _ssl_close(Connection &self){
+	if(!self._output){
+		self.state = CON_STATE_DISCONNECTED;
+		return;
+	}
+	// send unsent data 
+	while(!BIO_eof(self.in_write)){
+		char tmp[SOCKET_BUF_SIZE];
+		int rc = BIO_read(self.in_write, tmp, SOCKET_BUF_SIZE);
+		int rs;
+		if((rs = SSL_write(self.ssl, tmp, rc))>0){
+			while(!BIO_eof(self.write_buf)){
+				char tmp[SOCKET_BUF_SIZE];
+				int rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE);
+				self._output->send(*self._output, tmp, rc);
+			}
+		}
+	}
+	LOG("SSL: disconnected!");
+	self._output->close(*self._output);
+	self.state = CON_STATE_WAIT_CLOSE;
+}
 int CON_initSSL(Connection &self, bool client){
 	CON_init(self, client);
 	
@@ -240,6 +277,7 @@ int CON_initSSL(Connection &self, bool client){
 	self.recv = _ssl_recv;
 	self.run = _ssl_run;
 	self.listen = _ssl_listen;
+	self.close = _ssl_close;
 	
 	//self.on_data_received = _ssl_on_data_received;
 	return 1;

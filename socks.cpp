@@ -114,9 +114,9 @@ static void _socks_run(Service &self){
 			link->send(*link, buf, rs);
 		} 
 		if(rs == 0){ // disconnected
-			perror("receive data");
+			LOG("SOCKS: client disconnected!");
 			close(sock);
-			NET_free(link);
+			link->close(*link);
 			it = self.local_clients.erase(it);
 			continue;
 		}
