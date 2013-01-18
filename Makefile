@@ -41,6 +41,7 @@ DIR = $(shell pwd)
 APP = gclient
 	
 all: 
+	make -C udt
 	make -C vsocket
 	rm -f gclient
 	make -C . $(APP)
