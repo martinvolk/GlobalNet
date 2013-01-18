@@ -1,3 +1,10 @@
+/*********************************************
+GClient - GlobalNet P2P client
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
 #include "gclient.h"
 
 /***
@@ -10,49 +17,28 @@ use "nc localhost 2000" to connect and use the console.
 
 #define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; (sock)->send(*sock, ss.str().c_str(), ss.str().length());}
 
-string con_state_to_string(ConnectionState state){
-	switch(state){
-		case CON_STATE_UNINITIALIZED:
-			return "CON_STATE_UNINITIALIZED";
-		case CON_STATE_INITIALIZED: 
-			return "CON_STATE_INITIALIZED";
-		case CON_STATE_CONNECTING:
-			return "CON_STATE_CONNECTING";
-		case CON_STATE_LISTENING:
-			return "CON_STATE_LISTENING";
-		case CON_STATE_SSL_HANDSHAKE:
-			return "CON_STATE_SSL_HANDSHAKE";
-		case CON_STATE_RELAY_PENDING:
-			return "CON_STATE_RELAY_PENDING";
-		case CON_STATE_ESTABLISHED:
-			return "CON_STATE_ESTABLISHED";
-		case CON_STATE_WAIT_CLOSE:
-			return "CON_STATE_WAIT_CLOSE";
-		case CON_STATE_DISCONNECTED:
-			return "CON_STATE_DISCONNECTED";
-	}
-	return "";
-}
 
 
 static int _console_listen(Service &self, const char *host, uint16_t port){
 	LOG("[console] starting console service on port "<<port);
 	
-	Connection *con = NET_createConnection(*self.net, "tcp", false);
-	con->listen(*con, host, port);
+	VSL::VSOCKET con = VSL::socket(VSL::SOCKET_TCP);
+	stringstream ss;
+	ss<<host<<":"<<port;
+	VSL::listen(con, ss.str().c_str());
 	self.socket = con;
 	
 	return 1;
 }
 
 static void _console_run(Service &self){
-	Connection *client; 
+	VSL::VSOCKET client; 
 	
 	if((client = SRV_accept(self))){
 		LOG("new client connected to the console!");
 		
 		string prompt = "gnet# ";
-		client->send(*client, &prompt[0], prompt.length());
+		VSL::send(client, &prompt[0], prompt.length());
 	}
 	
 	for(uint c=0;c<ARRSIZE(self.clients);c++){
@@ -60,10 +46,10 @@ static void _console_run(Service &self){
 		char str[1024];
 		int rs;
 		
-		Connection *con = self.clients[c];
+		VSL::VSOCKET con = self.clients[c];
 		if(!con) continue;
-		
-		if((rs = con->recv(*con, str, 1024))>0){
+		 
+		if((rs = VSL::recv(con, str, 1024))>0){
 			str[rs] =0 ;
 			cout<<str<<endl;
 			
@@ -74,6 +60,8 @@ static void _console_run(Service &self){
 			LOG("[console] processing command " << cmd);
 			
 			if(cmd.compare("stats")){
+				VSL::print_stats(self.clients[c]);
+				/*
 				uint nc = 0, nl = 0, np = 0;
 				for(uint j = 0;j<ARRSIZE(self.net->sockets);j++){
 					Connection *sock = &self.net->sockets[j];
@@ -97,7 +85,7 @@ static void _console_run(Service &self){
 					}
 				}
 				SEND_SOCK(con, "Connections: "<<nc<<"/"<<ARRSIZE(self.net->sockets)<<", Links: "<<nl<<"/"<<ARRSIZE(self.net->links)<<
-						"Peers: "<<np<<"/"<<ARRSIZE(self.net->peers));
+						"Peers: "<<np<<"/"<<ARRSIZE(self.net->peers));*/
 				/*		
 				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){
 					SEND_SOCK(*c, "connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
@@ -126,7 +114,7 @@ static void _console_run(Service &self){
 			else if(cmd == "test"){
 				// send an introduction packet
 				cout << "Attempting to send test packets.."<<endl;
-				Packet pack;
+				//Packet pack;
 				/*
 				for(vector<Connection*>::iterator c = self.net->peers.begin(); c != self.net->peers.end(); c++){
 					cout << "Sending test packet.."<<endl;
@@ -192,7 +180,7 @@ static void _console_run(Service &self){
 			}
 			// send the prompt
 			string prompt = "gnet# ";
-			con->send(*con, &prompt[0], prompt.length());
+			VSL::send(con, &prompt[0], prompt.length());
 		}
 	}
 }

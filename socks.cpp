@@ -1,3 +1,10 @@
+/*********************************************
+GClient - GlobalNet P2P client
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
 #include "gclient.h"
 
 ///*******************************************
@@ -57,7 +64,7 @@ static void _socks_run(Service &self){
 		} 
 		char host[256];
 		unsigned char size = (unsigned char)socks.data[0];
-		memcpy(host, socks.data+1, size);
+		memcpy(host, socks.data+1, min(ARRSIZE(host), (unsigned long)size));
 		host[size] = 0;
 		memcpy(&port, socks.data+1+size, sizeof(port));
 		port = ntohs(port);
@@ -65,21 +72,11 @@ static void _socks_run(Service &self){
 				int(socks.atype)<<", IP: "<<host<<":"<<port);
 				
 		// create the chain of routers that the new connection will be using
-		// try to retreive the link from cache
 		stringstream ss;
 		ss<<host<<":"<<port;
 		
-		Connection *link = 0;
-		/*if(self._cache.find(ss.str()) != self._cache.end()){
-			(Link*)self._cache[ss.str()]
-			link = (Link*)self._cache[ss.str()];
-		}*/
-		if(link == 0){
-			link = NET_createTunnel(*self.net, host,port);
-			self._cache[ss.str()] = link;
-		}
-		
-		if(link){
+		VSL::VSOCKET link = VSL::tunnel(ss.str().c_str()); 
+		if(link > 0){
 			/// send success packet to the connected client
 			socks.code = 0;
 			socks.atype = 1;
@@ -90,7 +87,7 @@ static void _socks_run(Service &self){
 			//memcpy(socks.data+4, &nport, 2);
 			send(z, &socks, 10, 0);
 			
-			self.local_clients.push_back(pair<int, Connection*>(z, link));
+			self.local_clients.push_back(pair<int, VSL::VSOCKET>(z, link));
 			
 			
 			val = fcntl(z, F_GETFL, 0);
@@ -103,24 +100,24 @@ static void _socks_run(Service &self){
 	}
 	
 	/// process data from local clients
-	vector< pair<int, Connection*> >::iterator it = self.local_clients.begin();
+	vector< pair<int, VSL::VSOCKET> >::iterator it = self.local_clients.begin();
 	while(it != self.local_clients.end()){
 		int sock = (*it).first;
-		Connection *link = (*it).second;
+		VSL::VSOCKET link = (*it).second;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
 		
 		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
-			link->send(*link, buf, rs);
+			VSL::send(link, buf, rs);
 		} 
 		if(rs == 0){ // disconnected
 			LOG("SOCKS: client disconnected!");
 			close(sock);
-			link->close(*link);
+			VSL::close(link);
 			it = self.local_clients.erase(it);
 			continue;
-		}
-		if((rs = link->recv(*link, buf, SOCKET_BUF_SIZE))>0){
+		} 
+		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
 			LOG("sending "<<rs<<" bytes to socks connection!");
 			if((rs = send(sock, buf, rs, MSG_NOSIGNAL))<0){
 				

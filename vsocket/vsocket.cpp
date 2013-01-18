@@ -1,0 +1,232 @@
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "vsocket.h"
+#include "local.h"
+#include <math.h>
+
+#define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; VSL::send(sock, ss.str().c_str(), ss.str().length());}
+
+string con_state_to_string(ConnectionState state){
+	switch(state){
+		case CON_STATE_UNINITIALIZED:
+			return "CON_STATE_UNINITIALIZED";
+		case CON_STATE_INITIALIZED:
+			return "CON_STATE_INITIALIZED";
+		case CON_STATE_CONNECTING	:
+			return "CON_STATE_CONNECTING";
+		case CON_STATE_LISTENING:
+			return "CON_STATE_LISTENING";
+		case CON_STATE_SSL_HANDSHAKE:
+			return "CON_STATE_SSL_HANDSHAKE";
+		case CON_STATE_RELAY_PENDING:
+			return "CON_STATE_RELAY_PENDING";
+		case CON_STATE_ESTABLISHED:
+			return "CON_STATE_ESTABLISHED";
+		case CON_STATE_WAIT_CLOSE	:
+			return "CON_STATE_WAIT_CLOSE";
+		case CON_STATE_DISCONNECTED:
+			return "CON_STATE_DISCONNECTED";
+		default: 
+			return "UNKNOWN";
+	}
+	return "";
+}
+
+
+namespace VSL{
+	static Network net;
+	static map<VSL::VSOCKET, Connection*> sockets;
+	
+	int init(){
+		NET_init(net);
+		return 1;
+	}
+	
+	static Connection* _find_socket(VSOCKET socket){
+		map<VSOCKET, Connection*>::iterator it = sockets.find(socket);
+		if(it != sockets.end()){
+			return (*it).second;
+		}
+		return 0;
+	}
+	
+	static VSOCKET _create_socket(){
+		VSOCKET r;
+		while(true){
+			r = rand();
+			if(sockets.find(r) == sockets.end()){
+				sockets[r] = 0;
+				return r;
+			}
+		}
+		return -1;
+	}
+	
+	static bool _parse_host_port(const string &host_port, string *host, int *port){
+		vector<string> peer;
+		tokenize(host_port, string(":"), peer);
+		if(peer.size() > 1){
+			*port = atoi(peer[1].c_str());
+			*host = peer[0];
+			return true;
+		}
+		return false;
+	}
+	
+	VSL::VSOCKET socket(VSL::SOCKPROTO type){
+		const char *type_str;
+		if(type == VSL::SOCKET_TCP) type_str = "tcp";
+		else ERROR("TYPE NOT IMPLEMENTED!");
+		
+		Connection *con = NET_createConnection(net, type_str);
+		VSOCKET sock = _create_socket();
+		sockets[sock] = con;
+		return sock;
+	}
+	
+	VSL::VSOCKET tunnel(const char *path){
+		vector<string> hosts;
+		tokenize(path, string(">"), hosts);
+		if(!hosts.size()){
+			ERROR("tunnel: ERROR PARSING PATH STRING!");
+			return -1;
+		}
+		string dest = hosts[hosts.size()-1];
+		string host; int port;
+		_parse_host_port(dest.c_str(), &host, &port);
+		stringstream tmp; 
+		
+		tmp<<"*";
+		for(unsigned int c=0;c<hosts.size()-1;c++) 
+			tmp<<">"<<hosts[c];
+		
+		LOG("tunnel: creating tunnel to peer: "<<tmp.str()<<", then to: "<<host<<":"<<port);
+		
+		Connection *tun = NET_createLink(net, tmp.str().c_str());
+		if(tun){
+			stringstream ss;
+			ss<<"tcp:"<<host<<":"<<port;
+			tun->connect(*tun, ss.str().c_str(), 0);
+			
+			VSOCKET sock = _create_socket();
+			sockets[sock] = tun;
+			return sock;
+		}
+		
+		return -1;
+	}
+	
+	VSL::VSOCKET accept(VSL::VSOCKET socket){
+		Connection *con = _find_socket(socket);
+		if(con){
+			Connection *client = con->accept(*con);
+			if(client){
+				VSOCKET s = _create_socket();
+				sockets[s] = client; 
+				return s;
+			}
+			return 0; // listening but no connection
+		}
+		return -1; // invalid descriptor 
+	}
+	
+	int add_peer(const char *host_port){
+		string host;
+		int port;
+		if(_parse_host_port(host_port, &host, &port)){
+			NET_connect(net, host.c_str(), port);
+			return 1;
+		}
+		return -1;
+	}
+	
+	int connect(VSOCKET socket, const char *host_port){
+		Connection *con = _find_socket(socket);
+		if(con){
+			string host;
+			int port;
+			
+			if(_parse_host_port(host_port, &host, &port)){
+				con->connect(*con, host.c_str(), port);
+				return 1;
+			}
+		}
+		return -1;
+	}
+	
+	int listen(VSOCKET socket, const char *host_port){
+		Connection *con = _find_socket(socket);
+		
+		if(con){
+			string host;
+			int port;
+			if(_parse_host_port(host_port, &host, &port))
+				return con->listen(*con, host.c_str(), port); 
+		}
+		return -1;
+	}
+	
+	int send(VSOCKET socket, const char *data, size_t size){
+		Connection *con = _find_socket(socket);
+		if(con){
+			return con->send(*con, data, size);
+		}
+		return -1;
+	}
+	
+	int recv(VSOCKET socket, char *data, size_t size){
+		Connection *con = _find_socket(socket);
+		if(con){
+			return con->recv(*con, data, size);
+		}
+		return -1;
+	}
+	
+	void run(){
+		NET_run(net);
+	}
+	
+	int close(VSOCKET sock){
+		map<VSOCKET, Connection*>::iterator it = sockets.find(sock);
+		if(it != sockets.end()){
+			(*it).second->close(*(*it).second);
+			sockets.erase(it);
+			return 1;
+		}
+		return -1;
+	}
+	
+	void shutdown(){
+		NET_shutdown(net);
+	}
+	
+	void print_stats(int socket){
+		uint nc = 0, nl = 0, np = 0;
+		for(uint j = 0;j<ARRSIZE(net.sockets);j++){
+			Connection *sock = &net.sockets[j];
+			if(sock->initialized){
+				nc++;
+				SEND_SOCK(socket, "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
+			}
+		}
+		for(uint j = 0;j<ARRSIZE(net.links);j++){
+			Link *link = &net.links[j];
+			if(link->initialized){
+				nl++;
+				//SEND_SOCK(*c, "socket: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
+			}
+		}
+		for(uint j = 0;j<ARRSIZE(net.peers);j++){
+			Peer *peer = &net.peers[j];
+			if(peer && peer->initialized){
+				np++;
+				SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
+			}
+		}
+	}
+}

@@ -1,4 +1,95 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
+#include <algorithm>
+
+int tokenize(const string& str, const string& delimiter, vector<string> &arr)
+{
+    int strleng = str.length();
+    int delleng = delimiter.length();
+    if (delleng==0)
+        return 0;//no change
+
+    int i=0;
+    int k=0;
+    while( i<strleng )
+    {
+        int j=0;
+        while (i+j<strleng && j<delleng && str[i+j]==delimiter[j])
+            j++;
+        if (j==delleng)//found delimiter
+        {
+            arr.push_back(  str.substr(k, i-k) );
+            i+=delleng;
+            k=i;
+        }
+        else
+        {
+            i++;
+        }
+    }
+    arr.push_back(  str.substr(k, i-k) );
+    return arr.size();
+}
+/*
+int tokenize(const string& str,
+                      const string& delimiters, vector<string> &tokens)
+{
+	// Skip delimiters at beginning.
+	string::size_type lastPos = str.find_first_not_of(delimiters, 0);
+	// Find first "non-delimiter".
+	string::size_type pos     = str.find_first_of(delimiters, lastPos);
+
+	while (string::npos != pos || string::npos != lastPos)
+	{
+			// Found a token, add it to the vector.
+			tokens.push_back(str.substr(lastPos, pos - lastPos));
+			// Skip delimiters.  Note the "not_of"
+			lastPos = str.find_first_not_of(delimiters, pos);
+			// Find next "non-delimiter"
+			pos = str.find_first_of(delimiters, lastPos);
+	}
+  return tokens.size();
+}*/
+string errorstring(int e)
+{
+    switch(e) {
+	case SSL_ERROR_NONE:
+	    return "SSL_ERROR_NONE";
+	case SSL_ERROR_SSL:
+	    return "SSL_ERROR_SSL";
+	case SSL_ERROR_WANT_READ:
+	    return "SSL_ERROR_WANT_READ";
+	case SSL_ERROR_WANT_WRITE:
+	    return "SSL_ERROR_WANT_WRITE";
+	case SSL_ERROR_WANT_X509_LOOKUP:
+	    return "SSL_ERROR_WANT_X509_LOOKUP";
+	case SSL_ERROR_SYSCALL:
+	    return "SSL_ERROR_SYSCALL";
+	case SSL_ERROR_ZERO_RETURN:
+	    return "SSL_ERROR_ZERO_RETURN";
+        case SSL_ERROR_WANT_CONNECT:
+	    return "SSL_ERROR_WANT_CONNECT";
+	case SSL_ERROR_WANT_ACCEPT:
+	    return "SSL_ERROR_WANT_ACCEPT";
+	default:
+	    char error[5];
+	    sprintf(error, "%d", e);
+	    return error;
+    }
+}
+
+double milliseconds(){
+	struct timeval  tv;
+	gettimeofday(&tv, NULL);
+
+	return (tv.tv_sec) * 1000 + (tv.tv_usec) / 1000 ; 
+}
 
 Link *NET_allocLink(Network &self){
 	for(uint c = 0;c< ARRSIZE(self.links); c++){
@@ -121,7 +212,7 @@ int NET_init(Network &self){
 	for(uint c=0;c<ARRSIZE(self.sockets); c++)self.sockets[c].net = &self;
 	
 	self.server = NET_allocConnection(self);
-	CON_initPeer(*self.server, false);
+	CON_initPeer(*self.server);
 	
 	// attempt to find an available listen port. 1000 alternatives should be enough
 	for(int port = SERV_LISTEN_PORT; port <= SERV_LISTEN_PORT + 1000; port ++){
@@ -141,10 +232,36 @@ Connection *NET_connect(Network &self, const char *hostname, int port){
 	Peer *peer = NET_allocPeer(self);
 	
 	// set up a new relay connection to the host
-	CON_initPeer(*conn, true);
+	CON_initPeer(*conn);
 	conn->connect(*conn, hostname, port);
 	peer->socket = conn;
+	
 	return conn;
+}
+
+static void _handle_command(Network &self, Connection *source, const Packet &pack){
+	if(pack.cmd.code == CMD_PEER_LIST){
+		vector<string> fields;
+		LOG("NET: received active peer list "<<string(pack.data)<<", "<<pack.size());
+		tokenize(pack.data, ";", fields);
+		time_t packet_time = atol(fields[0].c_str());
+		for(unsigned int c=1;c<fields.size();c++){
+			vector<string> parts;
+			tokenize(fields[c], ":", parts);
+			if(parts.size() < 4){
+				ERROR("Invalid format for the list of IPs.");
+				return;
+			}
+			PeerRecord r; 
+			r.hub_ip = parts[0];
+			r.hub_port = atoi(parts[1].c_str());
+			r.peer_ip = parts[2];
+			r.peer_port = atoi(parts[3].c_str()); 
+			r.last_update = time(0) - packet_time + atol(parts[4].c_str());
+			self.peer_db.insert(r);
+			LOG(r.peer_ip<<":"<<r.peer_port);
+		}
+	} 
 }
 
 int NET_run(Network &self) {
@@ -159,6 +276,61 @@ int NET_run(Network &self) {
 		if(self.sockets[c].initialized)
 			self.sockets[c].run(self.sockets[c]);
 	}
+	
+	// monitor peers for replies
+	for(uint c = 0;c<ARRSIZE(self.peers);c++){
+		Peer *p = &self.peers[c];
+		Connection *s = p->socket;
+		Packet pack;
+		if(s && s->state & CON_STATE_CONNECTED){
+			if(s->recvCommand(*s, &pack)){
+				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
+				_handle_command(self, s, pack);
+			}
+			// send some commands if it is time. 
+			if(p->peer_list_timer < milliseconds() - 10000){
+				// update the last_update times since we are still connected to this peer. 
+				PeerRecord r; 
+				bool peer_ip_is_local = inet_ip_is_local(p->socket->host);
+				bool peer_listen_address_is_peer_address = true;
+				bool our_listen_ip_is_local = inet_ip_is_local(self.server->host);
+				
+				r.hub_ip = self.server->host;
+				r.hub_port = self.server->port;
+				r.peer_ip = p->socket->host;
+				r.peer_port = p->socket->port;
+				r.is_local = peer_ip_is_local;
+				r.last_update = time(0);
+				
+				self.peer_db.insert(r);
+				
+				// send a peer list to the peer 
+				vector<PeerRecord> rand_set;
+				rand_set.reserve(self.peer_db.size());
+				for(set<PeerRecord>::iterator it = self.peer_db.begin(); 
+						it != self.peer_db.end(); it++){
+					rand_set.push_back(*it);
+				}
+				//for(int c=0;c<rand_set.size();c++) rand_set[c] = c;
+				std::random_shuffle(rand_set.begin(), rand_set.end());
+				stringstream ss;
+				ss<<time(0)<<";";
+				for(int c=0;c<min(25, (int)rand_set.size());c++){
+					if(c!=0) ss<<";";
+					ss<<rand_set[c].hub_ip<<":"
+						<<rand_set[c].hub_port<<":" 
+						<<rand_set[c].peer_ip<<":"
+						<<rand_set[c].peer_port<<":"
+						<<rand_set[c].last_update;
+					LOG(ss.str());
+				}
+				p->socket->sendCommand(*p->socket, CMD_PEER_LIST, ss.str().c_str(), ss.str().length());
+	
+				p->peer_list_timer = milliseconds();
+			}
+		}
+	}
+
 	
 	// cleanup all unused objects
 	for(uint c=0;c<ARRSIZE(self.sockets); c++){
@@ -217,19 +389,19 @@ void NET_publishService(Network &self, Service *srv){
 	}*/
 }
 
-Connection *NET_createConnection(Network &self, const char *name, bool client){
+Connection *NET_createConnection(Network &self, const char *name){
 	Connection *con = NET_allocConnection(self);
 	if(strcmp(name, "peer")== 0){
-		CON_initPeer(*con, client);
+		CON_initPeer(*con);
 	}
 	else if(strcmp(name, "tcp")==0){
-		CON_initTCP(*con, client);
+		CON_initTCP(*con);
 	}
 	else if(strcmp(name, "udt")==0){
-		CON_initUDT(*con, client);
+		CON_initUDT(*con);
 	}
 	else if(strcmp(name, "ssl")==0){
-		CON_initSSL(*con, client);
+		CON_initSSL(*con);
 	}
 	else{
 		ERROR("Unknown socket type '"<<name<<"'");
@@ -237,7 +409,7 @@ Connection *NET_createConnection(Network &self, const char *name, bool client){
 	if(!con->initialized) return 0;
 	return con;
 }
-
+/*
 Service *NET_createService(Network &self, const char *name){
 	Service *svc = NET_allocService(self);
 	if(strcmp(name, "socks")== 0){
@@ -251,7 +423,7 @@ Service *NET_createService(Network &self, const char *name){
 	}
 	if(!svc->initialized) return 0;
 	return svc;
-}
+}*/
 
 void NET_shutdown(Network &self){
 	// close services

@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 /** 
 A link is a chain of n nodes that go through different hosts to a destination
@@ -10,7 +17,7 @@ A link is a chain of n nodes that go through different hosts to a destination
 Establishes a UDT connection using listen_port as local end **/
 Connection *_lnk_accept(Connection &self){
 	ERROR("[link] accept not implemented at the moment!");
-	return 0;
+	return 0; 
 }
 
 static int _lnk_connect(Connection &self, const char *hostname, uint16_t port){
@@ -131,8 +138,8 @@ static void _lnk_close(Connection &self){
 	self.state = CON_STATE_WAIT_CLOSE;
 }
 
-void CON_initLINK(Connection &self, bool client){ 
-	CON_init(self, true);
+void CON_initLINK(Connection &self){ 
+	CON_init(self);  
 	
 	self.type = NODE_LINK;
 	

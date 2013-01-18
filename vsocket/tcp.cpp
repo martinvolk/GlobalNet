@@ -1,5 +1,13 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
 
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
+
+/*
 static int socket_writable(int socket){
 	fd_set fdset;
 	FD_ZERO(&fdset);
@@ -10,7 +18,7 @@ static int socket_writable(int socket){
 	tv.tv_usec = 10;
 	
 	return select(1, 0, &fdset, 0, &tv);
-}
+}*/
 
 static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	struct sockaddr_in server;
@@ -37,7 +45,8 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	int val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	memcpy(self.host, host, min(ARRSIZE(self.host), strlen(host)));
+	string ip = inet_get_host_ip(host);
+	memcpy(self.host, ip.c_str(), ip.length());
 	self.port = port;
 		
 	self.socket = s;
@@ -56,11 +65,15 @@ static Connection *_tcp_accept(Connection &self){
 	
 	int z;
 	Connection *con = 0;
+	
+	if(!(self.state & CON_STATE_LISTENING)){
+		return 0;
+	}
 	if((z = accept4(self.socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		LOG("[server socket] client connected!");
 		
 		con = NET_allocConnection(*self.net);
-		CON_initTCP(*con, true);
+		CON_initTCP(*con);
 		//NET_createConnection(self.net, "tcp", false);
 		
 		getnameinfo((sockaddr *)&adr_clnt, len_inet, con->host, sizeof(con->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
@@ -123,8 +136,8 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	str = string("")+host;
-	memcpy(self.host, str.c_str(), min(ARRSIZE(self.host), str.length()));
+	str = inet_get_host_ip(host);
+	memcpy(self.host, str.c_str(), str.length());
 	self.port = port;
 	
 	self.state = CON_STATE_LISTENING;
@@ -196,7 +209,7 @@ static void _tcp_close(Connection &self){
 	self.state = CON_STATE_DISCONNECTED;
 }
 
-int CON_initTCP(Connection &self, bool client){
+int CON_initTCP(Connection &self){
 	CON_init(self);
 	
 	self.type = NODE_TCP;

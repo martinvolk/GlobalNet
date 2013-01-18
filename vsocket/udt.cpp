@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 /***
 Implementation of a normal UDT connection. Does not support any commands or packets. 
@@ -23,7 +30,7 @@ Connection *_udt_accept(Connection &self){
 		Connection *conn = NET_allocConnection(*self.net);
 		char clientservice[NI_MAXSERV];
 		
-		CON_initUDT(*conn, false);
+		CON_initUDT(*conn);
 		
 		getnameinfo((sockaddr *)&clientaddr, addrlen, conn->host, sizeof(conn->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
 		conn->port = atoi(clientservice);
@@ -43,10 +50,9 @@ static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	
 	memset(&hints, 0, sizeof(struct addrinfo));
 
-	hints.ai_flags = AI_PASSIVE;
+	hints.ai_flags = 0;
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
-	//hints.ai_socktype = SOCK_DGRAM;
 
 	stringstream ss;
 	ss << SERV_LISTEN_PORT;
@@ -105,8 +111,8 @@ static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	LOG("[udt] connected to "<<hostname<<":"<<port);
 	
 	self.socket = client; 
-	string host = string("")+hostname;
-	strncpy(self.host, host.c_str(), host.length());
+	string ip = inet_get_host_ip(hostname);
+	memcpy(self.host, ip.c_str(), ip.length());
 	self.port = port;
 	
 	self.state = CON_STATE_ESTABLISHED;
@@ -182,7 +188,6 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 		cout << "bind " << port << ": " << UDT::getlasterror().getErrorMessage() << endl;
 		return 0;
 	}
-
 	freeaddrinfo(res);
 
 	if (UDT::ERROR == UDT::listen(socket, 10))
@@ -190,16 +195,19 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 		cout << "listen: " << UDT::getlasterror().getErrorMessage() << endl;
 		return 0;
 	}
+	
 	// set socket as non blocking
 	UDT::setsockopt(socket, 0, UDT_RCVSYN, new bool(false), sizeof(bool));
 	
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
+	string ip = inet_get_host_ip(host);
+	memcpy(self.host, ip.c_str(), ip.length());
+	
 	self.state = CON_STATE_LISTENING;
-	string str = string("")+host;
-	memcpy(self.host, str.c_str(), min(ARRSIZE(self.host), str.length()));
 	self.port = port;
 	self.socket = socket;
+	
 	return 1;
 }
 void _udt_peg(Connection &self, Connection *other){
@@ -220,7 +228,7 @@ void _udt_close(Connection &self){
 	self.state = CON_STATE_DISCONNECTED;
 }
 
-int CON_initUDT(Connection &self, bool client){
+int CON_initUDT(Connection &self){
 	CON_init(self);
 	
 	self.type = NODE_UDT;

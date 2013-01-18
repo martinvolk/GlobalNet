@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
@@ -29,6 +36,12 @@ static int _con_send_command(Connection &self, ConnectionMessage msg, const char
 	return 1;
 }
 
+static int _con_recv_command(Connection &self, Packet *dst){
+	// only used by Peer. 
+	//ERROR("CON: call to recvCommand(): NOT IMPLEMENTED!"); 
+	return 0;
+}
+
 static void _con_run(Connection &self){
 	ERROR("CON_run not implemented!");
 }
@@ -44,12 +57,11 @@ static void _con_close(Connection &self){
 	ERROR("CONNECTION: close() has to be implemented!");
 }
 
-void CON_init(Connection &self, bool client){
+void CON_init(Connection &self){
 	self.ssl = 0;
 	self.ctx = 0;
 	self._output = 0;
 	self._input = 0;
-	self.is_client = client;
 	self.type = NODE_NONE;
 	
 	/* set up the memory-buffer BIOs */
@@ -67,6 +79,7 @@ void CON_init(Connection &self, bool client){
 	self.send = _con_send;
 	self.recv = _con_recv;
 	self.sendCommand = _con_send_command;
+	self.recvCommand = _con_recv_command;
 	self.listen = _con_listen;
 	self.accept = _con_accept;
 	self.run = _con_run;

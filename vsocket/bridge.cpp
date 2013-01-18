@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
@@ -75,8 +82,8 @@ static void _bridge_close(Connection &self){
 	ERROR("CON_close not implemented!");
 }
 
-void CON_initBRIDGE(Connection &self, bool client){
-	CON_init(self, client);
+void CON_initBRIDGE(Connection &self){
+	CON_init(self);
 	
 	self.connect = _bridge_connect;
 	self.send = _bridge_send;

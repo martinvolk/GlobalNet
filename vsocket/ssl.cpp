@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 #define ERR_SSL(err) if ((err)<=0) { cout<<errorstring(err)<<endl; ERR_print_errors_fp(stderr); }
 
@@ -44,6 +51,34 @@ void con_show_certs(Connection *c){
 }
 */
 
+static void _init_ssl_ctx(SSL_CTX *ctx, const char* cert, const char *key){
+	SSL_CTX_use_certificate_file(ctx,cert, SSL_FILETYPE_PEM);
+	SSL_CTX_use_PrivateKey_file(ctx,key, SSL_FILETYPE_PEM);
+	if ( !SSL_CTX_check_private_key(ctx) )
+	{
+			fprintf(stderr, "Private key does not match the public certificate\n");
+			abort();
+	}
+	
+	SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0);
+	SSL_CTX_set_verify_depth(ctx,4);
+}
+
+static void _init_ssl_socket(Connection *sock, bool server_socket){
+	if(server_socket){
+		sock->ctx = SSL_CTX_new (SSLv3_server_method ());
+		_init_ssl_ctx(sock->ctx, SERVER_CERT, SERVER_KEY);
+		sock->ssl = SSL_new (sock->ctx);
+		SSL_set_bio(sock->ssl, sock->read_buf, sock->write_buf);
+	} else {
+		sock->ctx = SSL_CTX_new (SSLv3_client_method ());
+		_init_ssl_ctx(sock->ctx, CLIENT_CERT, CLIENT_KEY);
+		sock->ssl = SSL_new (sock->ctx);
+		SSL_set_bio(sock->ssl, sock->read_buf, sock->write_buf);
+	}
+	sock->server_socket = server_socket;
+}
+
 int _ssl_recv(Connection &self, char *data, size_t size){
 	return BIO_read(self.in_read, data, size);
 }
@@ -55,18 +90,27 @@ int _ssl_send(Connection &self, const char *data, size_t size){
 static int _ssl_connect(Connection &self, const char *host, uint16_t port){
 	// since the connect call is meaningless for SSL node without an underlying socket
 	// we forward it to the next node, but as a command. 
+	if(!(self.state & CON_STATE_INITIALIZED)){
+		ERROR("CAN ONLY USE CONNECT ON A NEWLY CREATED SOCKET!");
+		return -1;
+	}
+	
 	if(self._output){
-		stringstream ss;
-		ss<<host<<":"<<port;
-		self._output->sendCommand(*self._output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+		// initialize ssl client method 
+		_init_ssl_socket(&self, false);
 		
-		LOG("[ssl] sending relay connect to "<<self._output->host<<":"<<self._output->port);
+		if(self._output->type == NODE_PEER){
+			LOG("[ssl] sending relay connect to "<<self._output->host<<":"<<self._output->port);
 		
-		// we now set our own state to CONNECTING.
-		// it will be changed to CONNECTED in the main loop once the 
-		// output connection changes it's own state to connected. 
-		self.state = CON_STATE_CONNECTING;
-		return 1;
+			stringstream ss;
+			ss<<"udt:"<<host<<":"<<port;
+			self._output->sendCommand(*self._output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+			return 1;
+		}
+		else {
+			self._output->connect(*self._output, host, port);
+			return 1;
+		}
 	}
 	return -1;
 }
@@ -78,7 +122,9 @@ Connection *_ssl_accept(Connection &self){
 		Connection *peer = self._output->accept(*self._output);
 		if(peer){
 			Connection *con = NET_allocConnection(*self.net);
-			CON_initSSL(*con, false);
+			CON_initSSL(*con);
+			
+			_init_ssl_socket(con, true);
 			
 			con->_output = peer;
 			
@@ -94,9 +140,16 @@ Connection *_ssl_accept(Connection &self){
 }
 
 int _ssl_listen(Connection &self, const char *host, uint16_t port){
-	self.is_client = false;
-	if(self._output)
+	if(!(self.state & CON_STATE_INITIALIZED)){
+		ERROR("CAN ONLY USE LISTEN ON A NEWLY CREATED SOCKET!");
+		return -1;
+	}
+	
+	if(self._output){
+		_init_ssl_socket(&self, true);
+		
 		return self._output->listen(*self._output, host, port);
+	}
 	return -1;
 }
 
@@ -111,7 +164,7 @@ void _ssl_run(Connection &self){
 	
 	// if we are waiting for connection and the downline has changed it's state
 	// to being connected, we can now switch to handshake mode and do the handshake. 
-	if((self.state & CON_STATE_INITIALIZED) && (self._output->state & CON_STATE_CONNECTED)){
+	if((self.state & CON_STATE_INITIALIZED) && self.ssl && self.ctx && (self._output->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
 		memcpy(self.host, self._output->host, ARRSIZE(self.host));
 		self.port = self._output->port;
@@ -147,10 +200,11 @@ void _ssl_run(Connection &self){
 		// may happen that would make us forever stuck in handshake. 
 		// we need to close if we stay here for too long.. 
 		if((milliseconds()-self.timer) > CONNECTION_TIMEOUT){
+			LOG("SSL: connection timed out!");
 			self.close(self);
 			return;
 		}
-		if(self.is_client == true){
+		if(self.server_socket == false){
 			if((res = SSL_connect(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
 				memcpy(self.host, self._output->host, ARRSIZE(self.host));
@@ -185,14 +239,14 @@ void _ssl_run(Connection &self){
 			
 			if(rc>0){
 				//LOG("[SSL] send: "<<self.host<<":"<<self.port<<" length: "<<rc<<" ");
-				LOG(hexencode(tmp, rc));
+				//LOG(hexencode(tmp, rc));
 			}
 		}
 		if((rc = SSL_read(self.ssl, tmp, SOCKET_BUF_SIZE))>0){
 			//LOG("[SSL] recv: "<<self.host<<":"<<self.port<<" length: "<<rc<<" ");
 			BIO_write(self.in_read, tmp, rc);
 			
-			LOG(hexencode(tmp, rc));
+			//LOG(hexencode(tmp, rc));
 		}
 	}
 	
@@ -227,49 +281,12 @@ static void _ssl_close(Connection &self){
 	self._output->close(*self._output);
 	self.state = CON_STATE_WAIT_CLOSE;
 }
-int CON_initSSL(Connection &self, bool client){
-	CON_init(self, client);
-	
-	if(client)
-		self.ctx = SSL_CTX_new (SSLv3_client_method ());
-	else
-		self.ctx = SSL_CTX_new (SSLv3_server_method ());
+int CON_initSSL(Connection &self){
+	CON_init(self);
 
-	/* if on the client: SSL_set_connect_state(con); */
-	if(client){
-		SSL_CTX_use_certificate_file(self.ctx,CLIENT_CERT, SSL_FILETYPE_PEM);
-		SSL_CTX_use_PrivateKey_file(self.ctx,CLIENT_KEY, SSL_FILETYPE_PEM);
-		if ( !SSL_CTX_check_private_key(self.ctx) )
-    {
-        fprintf(stderr, "Private key does not match the public certificate\n");
-        abort();
-    }
-    
-    SSL_CTX_set_verify(self.ctx, SSL_VERIFY_NONE, 0);
-		SSL_CTX_set_verify_depth(self.ctx,4);
-	}
-	else {
-		SSL_CTX_use_certificate_file(self.ctx, SERVER_CERT, SSL_FILETYPE_PEM);
-		SSL_CTX_use_PrivateKey_file(self.ctx, SERVER_KEY, SSL_FILETYPE_PEM);
-		if ( !SSL_CTX_check_private_key(self.ctx) )
-    {
-        fprintf(stderr, "Private key does not match the public certificate\n");
-        abort();
-    }
-		
-		SSL_CTX_set_verify(self.ctx, SSL_VERIFY_NONE, 0);
-		SSL_CTX_set_verify_depth(self.ctx,4);
-	}
-	
-	self.ssl = SSL_new (self.ctx);
-	
-	/* bind them together */
-	SSL_set_bio(self.ssl, self.read_buf, self.write_buf);
-	
 	self.type = NODE_SSL;
 	
 	self.state = CON_STATE_INITIALIZED;
-	self.is_client = client;
 	
 	self.connect = _ssl_connect;
 	self.accept = _ssl_accept;

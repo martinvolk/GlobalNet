@@ -1,4 +1,11 @@
-#include "gclient.h"
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
+#include "local.h"
 
 struct peer_data_t{
 	Connection *peer;
@@ -16,13 +23,7 @@ int _peer_connect(Connection &self, const char *hostname, uint16_t port){
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
 	self.state = CON_STATE_CONNECTING;
-	if(self._output->_output->type == NODE_PEER){
-		stringstream ss;
-		ss<<"udt:"<<hostname<<":"<<port;
-		self._output->_output->sendCommand(*self._output->_output, RELAY_CONNECT, ss.str().c_str(), ss.str().length());
-	}
-	else
-		self._output->_output->connect(*self._output->_output, hostname, port);
+	self._output->connect(*self._output, hostname, port);
 	
 	return 1;
 }
@@ -41,7 +42,7 @@ Connection *_peer_accept(Connection &self){
 		// the output has a new stream connected. 
 		// we need to create a new PEER node that will handle this new connection. 
 		Connection *con = NET_allocConnection(*self.net);
-		CON_initPeer(*con, false, con);
+		CON_initPeer(*con, con);
 		
 		// the new connection is technically not connected. 
 		// it will become connected once "peer" has become connected. 
@@ -107,8 +108,18 @@ int _peer_send_command(Connection &self, ConnectionMessage cmd, const char *data
 	Packet pack; 
 	pack.cmd.code = cmd;
 	pack.cmd.size = size;
-	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), size)); 
+	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), (unsigned long)size)); 
 	return BIO_write(self.write_buf, pack.c_ptr(), pack.size());
+}
+
+int _peer_recv_command(Connection &self, Packet *dst){
+	//LOG("PEER: RECV COMMAND!");
+	if(self._recv_packs.size()){
+		*dst = self._recv_packs.front();
+		self._recv_packs.pop_front();
+		return 1;
+	}
+	return 0;
 }
 
 /*** sets up this connection so that it's output is sent to "other"
@@ -124,7 +135,7 @@ static void _peer_peg(Connection &self, Connection *other){
 	Connection *udt = self._output->_output;
 	udt->close(*udt); 
 	
-	// now bridge the end of the ssl connection with 
+	// now bridge the end of the ssl connection with "other"
 	self._output->_output = other;
 	other->_input = self._output;
 }
@@ -188,9 +199,9 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 		// have no idea about it because it is only responsible for monitoring
 		// it's _output. A bridge will monitor the connection state and appropriately
 		// send a disconnect to the other node that is connected to it. 
-		Connection *other = NET_createConnection(*self.net, proto.c_str(), true);
+		Connection *other = NET_createConnection(*self.net, proto.c_str());
 		Connection *bridge = NET_allocConnection(*self.net);
-		CON_initBRIDGE(*bridge, true);
+		CON_initBRIDGE(*bridge);
 		
 		other->connect(*other, host.c_str(), port);
 		
@@ -225,8 +236,10 @@ void _peer_run(Connection &self){
 		// copy the hostname 		  
 		memcpy(self.host, self._output->host, ARRSIZE(self.host));
 		self.port = self._output->port;
+		// send information about our status to the other peer. 
+		
 		// toggle our state to connected as well. 
-		self.state = CON_STATE_CONNECTED;
+		self.state = CON_STATE_ESTABLISHED;
 	}
 	// handle data flow if we are connected to a peer. 
 	else if(self.state & CON_STATE_ESTABLISHED){
@@ -271,8 +284,8 @@ void _peer_run(Connection &self){
 					memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
 					packet.source = &self;
 					
-					LOG("CON_process: received complete packet at "<<self.host<<":"<<self.port<<" cmd: "<<
-						packet.cmd.code<<" datalength: "<<rc);
+					//LOG("CON_process: received complete packet at "<<self.host<<":"<<self.port<<" cmd: "<<
+					//	packet.cmd.code<<" datalength: "<<rc);
 					//packet.cmd.size<<" recvsize: "<<self._recv_buf.size());
 					
 					// if we have an output socket then we write the received data directly to that socket
@@ -317,7 +330,7 @@ static void _peer_close(Connection &self){
 	self._output->close(*self._output);
 	self.state = CON_STATE_WAIT_CLOSE;
 }
-int CON_initPeer(Connection &self, bool client, Connection *ssl){
+int CON_initPeer(Connection &self, Connection *ssl){
 	CON_init(self);
 	
 	if(!ssl){
@@ -329,8 +342,8 @@ int CON_initPeer(Connection &self, bool client, Connection *ssl){
 			return 0;
 		}
 		
-		CON_initSSL(*ssl, client);
-		CON_initUDT(*udp, client);
+		CON_initSSL(*ssl);
+		CON_initUDT(*udp);
 		ssl->_output = udp;
 		udp->_input = ssl;
 		ssl->_input = &self;
@@ -346,6 +359,7 @@ int CON_initPeer(Connection &self, bool client, Connection *ssl){
 	self.send = _peer_send;
 	self.recv = _peer_recv;
 	self.sendCommand = _peer_send_command;
+	self.recvCommand = _peer_recv_command;
 	self.listen = _peer_listen;
 	self.run = _peer_run;
 	self.peg = _peer_peg;

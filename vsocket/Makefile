@@ -1,5 +1,5 @@
 C++ = g++
-
+LD = ar
 ifndef os
    os = LINUX
 endif
@@ -8,7 +8,7 @@ ifndef arch
    arch = IA32
 endif
 
-CCFLAGS = -Wall -D$(os) -I./udt/ -finline-functions -fstack-check -fstack-protector-all -O0 -g3 -ggdb3
+CCFLAGS = -Wall -D$(os) -I../udt/ -finline-functions -fstack-check -fstack-protector-all -O0 -g3 -ggdb3
 
 ifeq ($(arch), IA32)
    CCFLAGS += -DIA32 #-mcpu=pentiumpro -march=pentiumpro -mmmx -msse
@@ -26,7 +26,7 @@ ifeq ($(arch), SPARC)
    CCFLAGS += -DSPARC
 endif
 
-LDFLAGS = -L./udt/ -L./vsocket -lvsocket -lcrypto -lssl -ludt -lstdc++ -lpthread -lm
+LDFLAGS = -L../lib/ -lcrypto -lssl -ludt -lstdc++ -lpthread -lm
 
 ifeq ($(os), UNIX)
    LDFLAGS += -lssl -lcrypto -lsocket
@@ -37,23 +37,18 @@ ifeq ($(os), SUNOS)
 endif
 
 DIR = $(shell pwd)
+LIB = libvsocket.a
 
-APP = gclient
-	
-all: 
-	make -C vsocket
-	rm -f gclient
-	make -C . $(APP)
-	
+all: $(LIB)
+
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-$(APP): gclient.o socks.o console.o 
-	$(C++) $^ -g -o $@ $(LDFLAGS)
+$(LIB): if.o connection.o peer.o ssl.o tcp.o udt.o bridge.o link.o net.o vsocket.o
+	ar rc $@ $^ 
 	
 clean:
-	make -C vsocket clean
-	rm -f *.o $(APP)
+	rm -f *.o $(LIB)
 
 install:
 	export PATH=$(DIR):$$PATH
