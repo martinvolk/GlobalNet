@@ -108,11 +108,17 @@ Node::~Node(){
 	read_buf = write_buf = in_read = in_write = 0;
 	
 	if(this->_output){
-		this->_output->_input = 0;
+		if(this->_output->_input == this)
+			this->_output->_input = 0;
+		if(this->_output->_output == this)
+			this->_output->_output = 0;
 		delete _output;
 	}
 	if(this->_input){
-		this->_input->_output = 0;
+		if(this->_input->_input == this)
+			this->_input->_input = 0;
+		if(this->_input->_output == this)
+			this->_input->_output = 0;
 		delete _input;
 	}
 	
