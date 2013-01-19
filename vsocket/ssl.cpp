@@ -235,7 +235,7 @@ void SSLNode::run(){
 	
 	// if the connection has been established then we can write our input data
 	// to ssl and encode it. 
-	if(this->state & CON_STATE_ESTABLISHED){
+	if(this->state & CON_STATE_CONNECTED){
 		if((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
 			if((rc = SSL_write(this->ssl, tmp, rc))<=0){
 				LOG("error sending ssl to "<<this->host<<":"<<this->port<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
@@ -259,7 +259,7 @@ void SSLNode::run(){
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
-		LOG("SSL: underlying connection lost. Disconnected!");
+		//LOG("SSL: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }

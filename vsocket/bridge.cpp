@@ -51,8 +51,12 @@ void BridgeNode::run(){
 		// cleaned up after all other loops have run next time. 
 		if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_INVALID){
 			LOG("BRIDGE: connection _output disconnected!");
+			//this->_input = 0;
 			if(this->_input){
-				this->_input->close();
+				// we send relay disconnect because we want to be able to save the connection on the remote 
+				// end. So simply doing close() here would be inappropriate because the client may want
+				// to reuse the already opened connection to the relay (us). 
+				this->_input->sendCommand(RELAY_DISCONNECT, "", 0);
 			}
 			this->state = CON_STATE_DISCONNECTED;
 		}

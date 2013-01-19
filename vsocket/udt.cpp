@@ -99,7 +99,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	// connect to the server, implict bind
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
 	{
-		LOG("[connection] connect: " << UDT::getlasterror().getErrorMessage());
+		ERROR("UDT: connect: " << UDT::getlasterror().getErrorMessage());
 		return 0;
 	}
 		

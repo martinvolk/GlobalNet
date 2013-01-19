@@ -30,14 +30,16 @@ namespace VSL {
 	}; 
 	
 	typedef enum{
-		VSL_STATE_UNINITIALIZED		= 0,
-		VSL_STATE_CONNECTING			= 1<<2,
-		VSL_STATE_ESTABLISHED 		= 1<<3,
-		VSL_STATE_LISTENING				= 1<<4,
-		VSL_STATE_WAIT_CLOSE			= 1<<5,
-		VSL_STATE_DISCONNECTED 		= 1<<6
+		VSOCKET_CONNECTED,
+		VSOCKET_IDLE,
+		VSOCKET_DISCONNECTED
 	}SocketState;
-
+	
+	struct SOCKINFO{
+		SocketState state;
+		bool is_connected;
+	};
+	
 	/** initializes the virtual sockets subsystem. 
 	Private and public keys specifies the keys which will be used as
 	main keys on this instance of VSL sockets. **/
@@ -80,9 +82,11 @@ namespace VSL {
 	int send(VSOCKET socket, const char *data, size_t size);
 	int recv(VSOCKET socket, char *data, size_t size);
 	
-	int connect(VSOCKET socket, const char *path);
+	int connect(VSOCKET socket, const char *host, uint16_t port);
 	
 	void run();
+	
+	int getsockinfo(VSOCKET sock, SOCKINFO *info);
 	
 	int close(VSOCKET socket);
 	

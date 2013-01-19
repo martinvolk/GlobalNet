@@ -57,7 +57,7 @@ using namespace std;
 //#define LOG(msg) {}
 #define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
-#define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] "<<msg << endl; }
+#define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] =========> "<<msg << endl; }
 
 #define SOCK_ERROR(what) { \
 		if ( errno != 0 ) {  \
@@ -192,6 +192,7 @@ typedef enum{
 	CON_STATE_SSL_HANDSHAKE		= 1<<4,
 	CON_STATE_RELAY_PENDING		= 1<<5,
 	CON_STATE_ESTABLISHED			= 1<<6,
+	CON_STATE_IDLE						= 1<<7,
 	CON_STATE_WAIT_CLOSE			= 1<<8,
 	CON_STATE_DISCONNECTED		= 1<<9
 }ConnectionState;
@@ -200,7 +201,7 @@ typedef enum{
 				CON_STATE_INITIALIZED|CON_STATE_CONNECTING|\
 				CON_STATE_LISTENING|CON_STATE_SSL_HANDSHAKE|\
 				CON_STATE_RELAY_PENDING)
-#define CON_STATE_CONNECTED (CON_STATE_ESTABLISHED)
+#define CON_STATE_CONNECTED (CON_STATE_ESTABLISHED | CON_STATE_IDLE)
 #define CON_STATE_INVALID (CON_STATE_WAIT_CLOSE|CON_STATE_DISCONNECTED)
 
 typedef enum{
@@ -241,7 +242,7 @@ public:
 	
 	double timer; 
 	
-	ConnectionState state;
+	int state;
 	
 	// bridging information
 	Node *_output; 

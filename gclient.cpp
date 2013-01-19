@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
 	
 	unsigned long usec = 0;
 	while(true){
-		if((usec % 100000) == 0)
+		if((usec % 100) == 0)
 			cout<<".";
 			fflush(stdout);
 		usec++;

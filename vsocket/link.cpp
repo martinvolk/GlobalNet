@@ -114,8 +114,12 @@ void LinkNode::run(){
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
-		LOG("LINK: underlying connection lost. Disconnected!");
+		//LOG("LINK: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
+	}
+	if(this->_output && this->_output->state & CON_STATE_IDLE){
+		//LOG("LINK: going idle..");
+		this->state |= CON_STATE_IDLE;
 	}
 }
 int LinkNode::listen(const char *host, uint16_t port){

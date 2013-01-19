@@ -90,6 +90,21 @@ public:
 	~SocksService();
 	virtual int listen(const char *host, uint16_t port);
 	virtual void run();
+private: 
+	class CachePost{
+	public:
+		CachePost(){socket = 0; last_used = 0;}
+		CachePost(VSL::VSOCKET s, time_t t){socket = s; last_used = t;}
+		VSL::VSOCKET socket; 
+		time_t last_used; 
+	};
+	typedef map<string, map<VSL::VSOCKET, CachePost> > Cache;
+	
+	VSL::VSOCKET get_socket_from_cache(const char *ip);
+	void put_socket_to_cache(const char *ip, VSL::VSOCKET);
+	
+	// cache made from client IP and list of currently open sockets. 
+	Cache cache; 
 };
 
 class ConsoleService : public Service{

@@ -11,7 +11,7 @@ Free software. Part of the GlobalNet project.
 
 #define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; VSL::send(sock, ss.str().c_str(), ss.str().length());}
 
-string con_state_to_string(ConnectionState state){
+string con_state_to_string(int state){
 	switch(state){
 		case CON_STATE_UNINITIALIZED:
 			return "CON_STATE_UNINITIALIZED";
@@ -149,16 +149,12 @@ namespace VSL{
 		return -1;
 	}
 	
-	int connect(VSOCKET socket, const char *host_port){
+	int connect(VSOCKET socket, const char *host, uint16_t port ){
 		Node *con = _find_socket(socket);
+		
 		if(con){
-			string host;
-			int port;
-			
-			if(_parse_host_port(host_port, &host, &port)){
-				con->connect(host.c_str(), port);
-				return 1;
-			}
+			con->connect(host, port);
+			return 1;
 		}
 		return -1;
 	}
@@ -207,6 +203,20 @@ namespace VSL{
 			return 1;
 		}
 		return -1;
+	}
+	
+	int getsockinfo(VSOCKET sock, SOCKINFO *info){
+		Node *n = _find_socket(sock);
+		if(!n) return -1;
+		if(n->state & CON_STATE_CONNECTED)
+			info->state = VSOCKET_CONNECTED;
+		else if(n->state & CON_STATE_DISCONNECTED)
+			info->state = VSOCKET_DISCONNECTED;
+		else if(n->state & CON_STATE_IDLE)
+			info->state = VSOCKET_IDLE;
+			
+		info->is_connected = (n->state & CON_STATE_CONNECTED) != 0;
+		return 0;
 	}
 	
 	void shutdown(){

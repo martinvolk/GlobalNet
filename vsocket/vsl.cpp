@@ -155,6 +155,12 @@ void VSLNode::_handle_packet(const Packet &packet){
 		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
 		BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
+	// received when the relay has no more data to send or when the remote 
+	// end on the relay has disconnected. Received on the client end. 
+	else if(packet.cmd.code == RELAY_DISCONNECT){
+		LOG("CON: relay: remote end disconnected!");
+		this->state = state | CON_STATE_IDLE; 
+	}
 	// this one is sent as a request to make current node connect to a different host
 	// the request will originate from _output and the new connection should be 
 	// connected to _input. Then all data sent by the input will be sent to the output. 
@@ -163,9 +169,13 @@ void VSLNode::_handle_packet(const Packet &packet){
 		// although in the future it may be useful as a way to reuse intermediate peer links. 
 		if(this->_input){
 			ERROR("RELAY_CONNECT received when we already have an _input node.");
-			// disconnect
-			this->close();
-			return;
+			
+			// prevent recursive delete
+			if(this->_input->_input == this)
+				this->_input->_input = 0;
+			if(this->_input->_output == this)
+				this->_input->_output = 0;
+			delete _input;
 		}
 		// data contains a string of format PROTO:IP:PORT
 		char tmp[SOCKET_BUF_SIZE];
@@ -249,7 +259,7 @@ void VSLNode::run(){
 		this->state = CON_STATE_ESTABLISHED;
 	}
 	// handle data flow if we are connected to a peer. 
-	else if(this->state & CON_STATE_ESTABLISHED){
+	else if(this->state & CON_STATE_CONNECTED){
 		// we have an extra buffer where all input data is put
 		// this buffer is filled in send() function that is called by someone else
 		// all this data belongs in a DATA packet. This data could not have been
@@ -318,7 +328,7 @@ void VSLNode::run(){
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
-		LOG("PEER: underlying connection lost. Disconnected!");
+		//LOG("PEER: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }

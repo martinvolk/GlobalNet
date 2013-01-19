@@ -16,6 +16,30 @@ In local model we can have a socket where we accept connections and forward
 data to the remote end. On the remote end we can have a socket that connects 
 to another host and relays information from that connection. **/
 
+static const char *get_socket_ip(int socket){
+	socklen_t len;
+	struct sockaddr_storage addr;
+	char ipstr[INET6_ADDRSTRLEN];
+	int port;
+
+	len = sizeof addr;
+	getpeername(socket, (struct sockaddr*)&addr, &len);
+
+	// deal with both IPv4 and IPv6:
+	if (addr.ss_family == AF_INET) {
+			struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+			port = ntohs(s->sin_port);
+			inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
+			return inet_ntoa(s->sin_addr);
+	} else { // AF_INET6
+			struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+			port = ntohs(s->sin6_port);
+			inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
+			return "";
+	}
+	return "";
+}
+
 SocksService::~SocksService(){
 	vector< pair<int, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
 	while(it != this->local_clients.end()){
@@ -23,6 +47,45 @@ SocksService::~SocksService(){
 		::close((*it).first);
 		it++;
 	}
+}
+
+void SocksService::put_socket_to_cache(const char *ip, VSL::VSOCKET socket){
+	LOG("SOCKS: cache: putting socket "<<socket<<" into cache for "<<ip<<" ("<<cache.size()<<")");
+	Cache::iterator it = cache.find(string(ip));
+	if(it == cache.end()){
+		map<VSL::VSOCKET, CachePost> m; 
+		m[socket] = CachePost(socket, time(0));
+		cache[string(ip)] = m;
+		LOG("SOCKS: cache: putting into cache was successfull!");
+		return;
+	}
+	//map<VSL::VSOCKET, CachePost>::iterator p = (*it).second.find(socket);
+	//if(p != (*it).second.end()) return;
+	LOG("SOCKS: cache: putting into cache was successfull! ("<<(*it).second.size()<<")");
+	(*it).second[socket] = CachePost(socket, time(0));
+}
+
+VSL::VSOCKET SocksService::get_socket_from_cache(const char *ip){
+	Cache::iterator it = cache.find(string(ip));
+	if(it == cache.end()) return 0;
+	
+	LOG("SOCKS: cache: trying to get a socket for: "<<ip<<" ("<<(*it).second.size()<<")");
+	
+	while((*it).second.size()){
+		map<VSL::VSOCKET, CachePost>::iterator p = (*it).second.begin();
+		VSL::VSOCKET ret = (*p).first;
+		(*it).second.erase(p);
+		VSL::SOCKINFO info;
+		VSL::getsockinfo(ret, &info );
+		if(info.is_connected){
+			LOG("SOCKS: ||||||||||||||||||| found a socket for "<<ip);
+			return ret;
+		}
+		else{
+			VSL::close(ret);
+		}
+	}
+	return 0;
 }
 
 void SocksService::run(){
@@ -33,7 +96,7 @@ void SocksService::run(){
 	
 	if((z = accept4(this->local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		INFO("SOCKS: new incoming connection from "<<inet_ntoa(adr_clnt.sin_addr)<<":"<<ntohs(adr_clnt.sin_port));
-		
+	
 		/// read the first introduction specifying an ip address that we are connecting to
 		struct socks_t{
 			unsigned char version;
@@ -84,7 +147,13 @@ void SocksService::run(){
 		stringstream ss;
 		ss<<host<<":"<<port;
 		
-		VSL::VSOCKET link = VSL::tunnel(ss.str().c_str()); 
+		VSL::VSOCKET link = get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
+		if(!link)
+			link = VSL::tunnel(ss.str().c_str()); 
+		else {
+			LOG("SOCKS: using previously opened socket from cache!");
+			VSL::connect(link, (string("tcp:")+ss.str()).c_str(), 0);
+		}
 		if(link > 0){
 			/// send success packet to the connected client
 			socks.code = 0;
@@ -97,7 +166,6 @@ void SocksService::run(){
 			send(z, &socks, 10, 0);
 			
 			this->local_clients.push_back(pair<int, VSL::VSOCKET>(z, link));
-			
 			
 			val = fcntl(z, F_GETFL, 0);
 			fcntl(z, F_SETFL, val | O_NONBLOCK);
@@ -113,16 +181,18 @@ void SocksService::run(){
 	while(it != this->local_clients.end()){
 		int sock = (*it).first;
 		VSL::VSOCKET link = (*it).second;
+		VSL::SOCKINFO info;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
+		VSL::getsockinfo(link, &info);
 		
 		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
 			VSL::send(link, buf, rs);
 		} 
-		if(rs == 0){ // client disconnected
-			LOG("SOCKS: client disconnected!");
+		if(rs == 0 || info.state == VSL::VSOCKET_IDLE){ // client disconnected
+			LOG("SOCKS: session has ended!");
+			put_socket_to_cache(get_socket_ip(sock), link);
 			close(sock);
-			VSL::close(link);
 			it = this->local_clients.erase(it);
 			continue;
 		} 
@@ -132,7 +202,7 @@ void SocksService::run(){
 				
 			}
 		} 
-		if(rs < 0){
+		if(rs < 0 || info.state == VSL::VSOCKET_DISCONNECTED){
 			LOG("SOCKS: peer end disconnected.");
 			VSL::close(link);
 			it = local_clients.erase(it);
