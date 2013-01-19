@@ -46,7 +46,7 @@ Free software. Part of the GlobalNet project.
 #include <numeric>
 
 /// boost
-#include <boost/shared_ptr.hpp>
+//#include <boost/shared_ptr.hpp>
 
 #include <udt.h>
 #include <math.h>
