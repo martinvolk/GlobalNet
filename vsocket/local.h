@@ -31,6 +31,7 @@ Free software. Part of the GlobalNet project.
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <list>
@@ -64,6 +65,11 @@ using namespace std;
 #define SOCKET_BUF_SIZE 8192
 
 #define SERV_LISTEN_PORT 9000
+// send a handful of peers to each connected peer every 10 seconds. 
+#define NET_PEER_LIST_INTERVAL 5
+// remove peers from the list if they have not been updated for one minute. 
+#define NET_PEER_PURGE_INTERVAL 30
+
 
 // maximum simultaneous connections
 #define MAX_CONNECTIONS 1024
@@ -220,8 +226,8 @@ struct Connection{
 	bool server_socket;
 	
 	UDTSOCKET socket; // the underlying socket for peer connection
-	char host[NI_MAXHOST];
-	int port;
+	string host;
+	uint16_t port;
 	
 	double timer; 
 	
@@ -331,7 +337,8 @@ struct Peer{
 	bool initialized;
 	Connection *socket;
 	string listen_port;
-	double peer_list_timer;
+	
+	time_t last_peer_list_submit; 
 };
 
 /** this structure holds public inforamtion that is available about the router. 
@@ -346,8 +353,8 @@ struct RouterInfo{
 	uint16_t listen_interval; // number of ports from the start port. 
 }; 
 
+
 struct PeerRecord{
-	LINKADDRESS hash;
 	string hub_ip;
 	int hub_port;
 	string peer_ip;
@@ -355,13 +362,41 @@ struct PeerRecord{
 	time_t last_update; 
 	bool is_local;
 	
+	PeerRecord(){
+		hub_ip = "0.0.0.0";
+		peer_ip = "0.0.0.0";
+		hub_port = peer_port = 0;
+		last_update = 0;
+	}
+	PeerRecord(const PeerRecord &other){
+		this->hub_ip = other.hub_ip;
+		this->hub_port = other.hub_port;
+		this->peer_ip = other.peer_ip;
+		this->peer_port = other.peer_port;
+		this->last_update = other.last_update;
+		this->is_local = other.is_local;
+	}
 	
-  bool operator<(const PeerRecord &other) const {
+	LINKADDRESS hash() const{
+		LINKADDRESS ret;
 		stringstream ss;
 		ss<<hub_ip<<hub_port<<peer_ip<<peer_port; 
-		SHA1((unsigned char*)ss.str().c_str(), ss.str().length(), (unsigned char*)hash.hash);
-		return hash.hex().compare(other.hash.hex()) < 0;
+		SHA1((unsigned char*)ss.str().c_str(), ss.str().length(), (unsigned char*)ret.hash);
+		return ret;
 	}
+  bool operator<(const PeerRecord &other) const {
+		return this->hash().hex().compare(other.hash().hex()) < 0;
+	}
+};
+
+class PeerDatabase{
+public:
+	void insert(const PeerRecord &data);
+	void update(const PeerRecord &data);
+	vector<PeerRecord> random(unsigned int count);
+	void purge();
+	
+	map<string, PeerRecord> db;
 };
 
 struct Network{
@@ -371,7 +406,7 @@ struct Network{
 	Service services[MAX_SERVERS];
 	Peer peers[MAX_PEERS];
 	
-	set<PeerRecord> peer_db;
+	PeerDatabase peer_db;
 };
 
 struct Application{

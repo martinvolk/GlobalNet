@@ -85,7 +85,7 @@ static void _lnk_run(Connection &self){
 	if((self.state & CON_STATE_INITIALIZED) && self._output && self._output->state & CON_STATE_CONNECTED){
 		LOG("[link] link connected!");
 		
-		memcpy(self.host, self._output->host, ARRSIZE(self.host));
+		self.host = self._output->host;
 		self.port = self._output->port;
 		
 		self.state = CON_STATE_ESTABLISHED;

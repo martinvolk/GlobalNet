@@ -29,10 +29,12 @@ Connection *_udt_accept(Connection &self){
 		
 		Connection *conn = NET_allocConnection(*self.net);
 		char clientservice[NI_MAXSERV];
+		char host[NI_MAXHOST];
 		
 		CON_initUDT(*conn);
 		
-		getnameinfo((sockaddr *)&clientaddr, addrlen, conn->host, sizeof(conn->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
+		getnameinfo((sockaddr *)&clientaddr, addrlen, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
+		conn->host = host;
 		conn->port = atoi(clientservice);
 		conn->socket = recver;
 		
@@ -111,8 +113,7 @@ static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	LOG("[udt] connected to "<<hostname<<":"<<port);
 	
 	self.socket = client; 
-	string ip = inet_get_host_ip(hostname);
-	memcpy(self.host, ip.c_str(), ip.length());
+	self.host = inet_get_host_ip(hostname);
 	self.port = port;
 	
 	self.state = CON_STATE_ESTABLISHED;
@@ -201,9 +202,7 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 	
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
-	string ip = inet_get_host_ip(host);
-	memcpy(self.host, ip.c_str(), ip.length());
-	
+	self.host = inet_get_host_ip(host);
 	self.state = CON_STATE_LISTENING;
 	self.port = port;
 	self.socket = socket;

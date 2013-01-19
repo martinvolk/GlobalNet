@@ -45,8 +45,7 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	int val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	string ip = inet_get_host_ip(host);
-	memcpy(self.host, ip.c_str(), ip.length());
+	self.host = inet_get_host_ip(host);
 	self.port = port;
 		
 	self.socket = s;
@@ -76,7 +75,9 @@ static Connection *_tcp_accept(Connection &self){
 		CON_initTCP(*con);
 		//NET_createConnection(self.net, "tcp", false);
 		
-		getnameinfo((sockaddr *)&adr_clnt, len_inet, con->host, sizeof(con->host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
+		char host[NI_MAXHOST];
+		getnameinfo((sockaddr *)&adr_clnt, len_inet, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
+		con->host = host;
 		con->port = atoi(clientservice);
 		
 		con->socket = z;
@@ -136,8 +137,7 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	str = inet_get_host_ip(host);
-	memcpy(self.host, str.c_str(), str.length());
+	self.host = inet_get_host_ip(host);
 	self.port = port;
 	
 	self.state = CON_STATE_LISTENING;

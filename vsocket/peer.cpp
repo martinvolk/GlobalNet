@@ -69,7 +69,12 @@ static int _peer_listen(Connection &self, const char *host, uint16_t port){
 		return -1;
 	}
 	self.state = CON_STATE_LISTENING;
-	return self._output->listen(*self._output, host, port);
+	if(self._output->listen(*self._output, host, port)>0){
+		self.host = self._output->host;
+		self.port = self._output->port;
+		return 1;
+	}
+	return -1;
 }
 
 
@@ -234,7 +239,7 @@ void _peer_run(Connection &self){
 	// if we are waiting for connection and connection of the underlying node has been established
 	if((self.state & CON_STATE_CONNECTING) && self._output && (self._output->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
-		memcpy(self.host, self._output->host, ARRSIZE(self.host));
+		self.host = self._output->host;
 		self.port = self._output->port;
 		// send information about our status to the other peer. 
 		

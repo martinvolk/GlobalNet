@@ -6,7 +6,8 @@ Free software. Part of the GlobalNet project.
 **********************************************/
 
 #include "local.h"
-#include <algorithm>
+
+
 
 int tokenize(const string& str, const string& delimiter, vector<string> &arr)
 {
@@ -36,26 +37,6 @@ int tokenize(const string& str, const string& delimiter, vector<string> &arr)
     arr.push_back(  str.substr(k, i-k) );
     return arr.size();
 }
-/*
-int tokenize(const string& str,
-                      const string& delimiters, vector<string> &tokens)
-{
-	// Skip delimiters at beginning.
-	string::size_type lastPos = str.find_first_not_of(delimiters, 0);
-	// Find first "non-delimiter".
-	string::size_type pos     = str.find_first_of(delimiters, lastPos);
-
-	while (string::npos != pos || string::npos != lastPos)
-	{
-			// Found a token, add it to the vector.
-			tokens.push_back(str.substr(lastPos, pos - lastPos));
-			// Skip delimiters.  Note the "not_of"
-			lastPos = str.find_first_not_of(delimiters, pos);
-			// Find next "non-delimiter"
-			pos = str.find_first_of(delimiters, lastPos);
-	}
-  return tokens.size();
-}*/
 string errorstring(int e)
 {
     switch(e) {
@@ -216,8 +197,10 @@ int NET_init(Network &self){
 	
 	// attempt to find an available listen port. 1000 alternatives should be enough
 	for(int port = SERV_LISTEN_PORT; port <= SERV_LISTEN_PORT + 1000; port ++){
-		if(self.server->listen(*self.server, "localhost", port))
+		if(self.server->listen(*self.server, "localhost", port)){
+			LOG("NET: peer listening on "<<self.server->host<<":"<<self.server->port);
 			break;
+		}
 		if(port == SERV_LISTEN_PORT + 1000){
 			cout<<"ERROR no available listen ports left!"<<endl;
 			return 0;
@@ -259,7 +242,7 @@ static void _handle_command(Network &self, Connection *source, const Packet &pac
 			r.peer_port = atoi(parts[3].c_str()); 
 			r.last_update = time(0) - packet_time + atol(parts[4].c_str());
 			self.peer_db.insert(r);
-			LOG(r.peer_ip<<":"<<r.peer_port);
+			LOG(r.hub_ip<<":"<<r.hub_port<<";"<<r.peer_ip<<":"<<r.peer_port);
 		}
 	} 
 }
@@ -277,23 +260,36 @@ int NET_run(Network &self) {
 			self.sockets[c].run(self.sockets[c]);
 	}
 	
+	self.peer_db.purge();
+	
+	// update our listen record
+	PeerRecord r; 	
+	r.hub_ip = "";
+	r.hub_port = 0;
+	r.peer_ip = self.server->host;
+	r.peer_port = self.server->port;
+	r.is_local = false;
+	r.last_update = time(0);
+	
+	self.peer_db.insert(r);
+				
 	// monitor peers for replies
 	for(uint c = 0;c<ARRSIZE(self.peers);c++){
 		Peer *p = &self.peers[c];
 		Connection *s = p->socket;
 		Packet pack;
-		if(s && s->state & CON_STATE_CONNECTED){
+		if(p->initialized && s && s->state & CON_STATE_CONNECTED){
 			if(s->recvCommand(*s, &pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
 				_handle_command(self, s, pack);
 			}
 			// send some commands if it is time. 
-			if(p->peer_list_timer < milliseconds() - 10000){
+			if(p->last_peer_list_submit < time(0) - NET_PEER_LIST_INTERVAL){
 				// update the last_update times since we are still connected to this peer. 
-				PeerRecord r; 
 				bool peer_ip_is_local = inet_ip_is_local(p->socket->host);
 				bool peer_listen_address_is_peer_address = true;
 				bool our_listen_ip_is_local = inet_ip_is_local(self.server->host);
+				PeerRecord r; 
 				
 				r.hub_ip = self.server->host;
 				r.hub_port = self.server->port;
@@ -302,31 +298,25 @@ int NET_run(Network &self) {
 				r.is_local = peer_ip_is_local;
 				r.last_update = time(0);
 				
-				self.peer_db.insert(r);
+				if(r.peer_ip.compare("") != 0)
+					self.peer_db.insert(r);
 				
 				// send a peer list to the peer 
-				vector<PeerRecord> rand_set;
-				rand_set.reserve(self.peer_db.size());
-				for(set<PeerRecord>::iterator it = self.peer_db.begin(); 
-						it != self.peer_db.end(); it++){
-					rand_set.push_back(*it);
-				}
-				//for(int c=0;c<rand_set.size();c++) rand_set[c] = c;
-				std::random_shuffle(rand_set.begin(), rand_set.end());
+				vector<PeerRecord> rand_set = self.peer_db.random(25);
+				
 				stringstream ss;
-				ss<<time(0)<<";";
-				for(int c=0;c<min(25, (int)rand_set.size());c++){
-					if(c!=0) ss<<";";
-					ss<<rand_set[c].hub_ip<<":"
+				ss<<time(0);
+				for(int c=0;c< rand_set.size();c++){
+					ss<<";"<<rand_set[c].hub_ip<<":"
 						<<rand_set[c].hub_port<<":" 
 						<<rand_set[c].peer_ip<<":"
 						<<rand_set[c].peer_port<<":"
 						<<rand_set[c].last_update;
-					LOG(ss.str());
 				}
+				LOG(ss.str());
 				p->socket->sendCommand(*p->socket, CMD_PEER_LIST, ss.str().c_str(), ss.str().length());
 	
-				p->peer_list_timer = milliseconds();
+				p->last_peer_list_submit = time(0);
 			}
 		}
 	}

@@ -146,9 +146,12 @@ int _ssl_listen(Connection &self, const char *host, uint16_t port){
 	}
 	
 	if(self._output){
-		_init_ssl_socket(&self, true);
-		
-		return self._output->listen(*self._output, host, port);
+		if(self._output->listen(*self._output, host, port)>0){
+			_init_ssl_socket(&self, true);
+			self.host = self._output->host;
+			self.port = self._output->port;
+			return 1;
+		}
 	}
 	return -1;
 }
@@ -166,7 +169,7 @@ void _ssl_run(Connection &self){
 	// to being connected, we can now switch to handshake mode and do the handshake. 
 	if((self.state & CON_STATE_INITIALIZED) && self.ssl && self.ctx && (self._output->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
-		memcpy(self.host, self._output->host, ARRSIZE(self.host));
+		self.host = self._output->host;
 		self.port = self._output->port;
 		
 		self.timer = milliseconds();
@@ -207,7 +210,7 @@ void _ssl_run(Connection &self){
 		if(self.server_socket == false){
 			if((res = SSL_connect(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
-				memcpy(self.host, self._output->host, ARRSIZE(self.host));
+				self.host = self._output->host;
 				self.port = self._output->port;
 				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
@@ -218,7 +221,7 @@ void _ssl_run(Connection &self){
 		else {
 			if((res=SSL_accept(self.ssl))>0){
 				self.state = CON_STATE_ESTABLISHED;
-				memcpy(self.host, self._output->host, ARRSIZE(self.host));
+				self.host = self._output->host;
 				self.port = self._output->port;
 				LOG("ssl connection succeeded! Connected to peer "<<self.host<<":"<<self.port);
 			}
