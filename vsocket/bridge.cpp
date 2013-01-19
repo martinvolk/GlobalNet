@@ -34,7 +34,7 @@ int BridgeNode::recv(char *data, size_t size){
 }
 
 void BridgeNode::run(){
-	//Node::run();
+	Node::run();
 	
 	// if we are still disconnected and our monitored connection has switched to connected state
 	// then we have to notify our input of the change by sending the RELAY_CONNECT_OK command. 

@@ -101,7 +101,7 @@ namespace VSL{
 		_parse_host_port(dest.c_str(), &host, &port);
 		stringstream tmp; 
 		
-		tmp<<"*>*";
+		tmp<<"*";
 		for(unsigned int c=0;c<hosts.size()-1;c++) 
 			tmp<<">"<<hosts[c];
 		

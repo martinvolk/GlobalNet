@@ -149,5 +149,5 @@ LinkNode::LinkNode(){
 }
 
 LinkNode::~LinkNode(){
-	this->close();
+	//this->close();
 }
