@@ -101,11 +101,13 @@ namespace VSL{
 		_parse_host_port(dest.c_str(), &host, &port);
 		stringstream tmp; 
 		
-		tmp<<"*";
+		tmp<<"*>*";
 		for(unsigned int c=0;c<hosts.size()-1;c++) 
 			tmp<<">"<<hosts[c];
 		
 		LOG("tunnel: creating tunnel to peer: "<<tmp.str()<<", then to: "<<host<<":"<<port);
+		
+		INFO("VSOCKET: setting up tunnel: "<<tmp.str()<<">"<<host<<":"<<port);
 		
 		Node *tun = net->createLink(tmp.str().c_str());
 		if(tun){

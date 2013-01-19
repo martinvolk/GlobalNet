@@ -40,7 +40,9 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
+//#define LOG(msg) {}
 #define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] "<<msg << endl; }
 #define ARRSIZE(arr) (unsigned long)(sizeof(arr)/sizeof(arr[0]))
 

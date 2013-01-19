@@ -7,6 +7,10 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
+BridgeNode::BridgeNode(){
+	type = NODE_BRIDGE;
+}
+
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
 Node *BridgeNode::accept(){
@@ -30,7 +34,7 @@ int BridgeNode::recv(char *data, size_t size){
 }
 
 void BridgeNode::run(){
-	Node::run();
+	//Node::run();
 	
 	// if we are still disconnected and our monitored connection has switched to connected state
 	// then we have to notify our input of the change by sending the RELAY_CONNECT_OK command. 

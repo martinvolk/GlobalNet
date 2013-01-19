@@ -61,7 +61,7 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 int LinkNode::send(const char *data, size_t size){
 	// we place the data in the link buffer and send it out later in the 
 	// main loop. 
-	LOG("LINK: send(): "<<size<<" bytes!");
+	//LOG("LINK: send(): "<<size<<" bytes!");
 	if(this->state & CON_STATE_INVALID) return -1;
 	return BIO_write(this->write_buf, data, size);
 }
@@ -100,12 +100,12 @@ void LinkNode::run(){
 		// send/recv data
 		while(!BIO_eof(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				LOG("LINK: sending "<<rc<<" bytes of data!");
+				//LOG("LINK: sending "<<rc<<" bytes of data!");
 				this->_output->send(tmp, rc);
 			}
 		}
 		if((rc = this->_output->recv(tmp, sizeof(tmp)))>0){
-			LOG("LINK: received "<<rc<<" bytes of data!");
+			//LOG("LINK: received "<<rc<<" bytes of data!");
 			BIO_write(this->read_buf, tmp, rc);
 		}
 	}
@@ -149,5 +149,5 @@ LinkNode::LinkNode(){
 }
 
 LinkNode::~LinkNode(){
-	
+	this->close();
 }

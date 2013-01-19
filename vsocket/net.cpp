@@ -107,6 +107,7 @@ Peer *Network::createPeer(){
 */
 Network::Peer *Network::getRandomPeer(){
 	int r = rand() % peers.size();
+	LOG("=================> USING PEER "<<r);
 	if(!peers.size()) return 0;
 	int c=0;
 	for(list<Peer*>::iterator it = peers.begin();

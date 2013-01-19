@@ -100,13 +100,20 @@ Node::Node(){
 Node::~Node(){
 	LOG("NODE: deleting "<<this->host<<":"<<this->port);
 	
+	BIO_free(this->read_buf);
+	BIO_free(this->write_buf);
+	BIO_free(this->in_read);
+	BIO_free(this->in_write);
+	
+	read_buf = write_buf = in_read = in_write = 0;
+	
 	if(this->_output){
 		this->_output->_input = 0;
-		//delete _output;
+		delete _output;
 	}
 	if(this->_input){
 		this->_input->_output = 0;
-		//delete _input;
+		delete _input;
 	}
 	
 	this->_output = 0;

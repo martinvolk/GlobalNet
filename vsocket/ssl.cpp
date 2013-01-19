@@ -309,4 +309,5 @@ SSLNode::~SSLNode(){
 		if(this->ctx)
 			SSL_CTX_free(this->ctx);
 	}
+	read_buf = write_buf = 0; // freed by ssl
 }

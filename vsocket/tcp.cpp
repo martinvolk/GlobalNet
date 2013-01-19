@@ -28,6 +28,7 @@ int TCPNode::connect(const char *host, uint16_t port){
 	hp = gethostbyname(host);
 	if (hp == NULL) {
 		fprintf(stderr, "%s: unknown host\n", host);
+		return -1;
 	}
 	memset((char *)&server, 0, sizeof(server));
 	memcpy((char *)&server.sin_addr, hp->h_addr, hp->h_length);
@@ -37,7 +38,7 @@ int TCPNode::connect(const char *host, uint16_t port){
 	s = ::socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s < 0) {
 		perror("socket");
-		return 0;
+		return -1;
 	}
 	
 	::connect(s, (struct sockaddr *)&server, sizeof(server));

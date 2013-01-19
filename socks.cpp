@@ -32,7 +32,7 @@ void SocksService::run(){
 	int z;
 	
 	if((z = accept4(this->local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
-		LOG("[server socket] client connected!");
+		INFO("SOCKS: new incoming connection from "<<inet_ntoa(adr_clnt.sin_addr)<<":"<<ntohs(adr_clnt.sin_port));
 		
 		/// read the first introduction specifying an ip address that we are connecting to
 		struct socks_t{

@@ -234,7 +234,8 @@ void VSLNode::run(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	if(_input) _input->run();
+	// ugly
+	if(_input && _input->type == NODE_BRIDGE) _input->run();
 	Node::run();
 	
 	// if we are waiting for connection and connection of the underlying node has been established
@@ -254,7 +255,7 @@ void VSLNode::run(){
 		// all this data belongs in a DATA packet. This data could not have been
 		// directly writen to write_buf precisely because it needs to be formatted. 
 		while((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
-			LOG("[sending data] "<<rc<<" bytes to "<<this->host<<":"<<this->port);
+			//LOG("[sending data] "<<rc<<" bytes to "<<this->host<<":"<<this->port);
 			
 			this->sendCommand(CMD_DATA, tmp, rc);
 		}

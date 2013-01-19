@@ -54,7 +54,9 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
+//#define LOG(msg) {}
 #define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] "<<msg << endl; }
 
 #define SOCK_ERROR(what) { \
@@ -207,7 +209,8 @@ typedef enum{
 	NODE_UDT,
 	NODE_SSL,
 	NODE_PEER,
-	NODE_LINK
+	NODE_LINK,
+	NODE_BRIDGE
 }NodeType; 
 
 typedef int TCPSocket;
@@ -345,6 +348,8 @@ private:
 
 class BridgeNode : public Node{
 public:
+	BridgeNode();
+	
 	virtual int connect(const char *host, uint16_t port);
 	virtual int send(const char *data, size_t size);
 	virtual int recv(char *data, size_t size);

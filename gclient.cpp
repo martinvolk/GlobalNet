@@ -141,7 +141,7 @@ int main(int argc, char* argv[])
 	
 	unsigned long usec = 0;
 	while(true){
-		if((usec % 10000) == 0)
+		if((usec % 100000) == 0)
 			cout<<".";
 			fflush(stdout);
 		usec++;
@@ -149,7 +149,7 @@ int main(int argc, char* argv[])
 		socks->run();
 		console->run();
 		VSL::run();
-		usleep(100); // about 100fps
+		usleep(1000); // microseconds
 	}
 	
 	delete socks;
