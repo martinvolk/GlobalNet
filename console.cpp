@@ -168,7 +168,7 @@ static void _console_run(Service &self){
 				/*
 				LOG("testing to create a link");
 				Link *link = NET_createLink(&app->net, "5014d1b320016c9557ebf1b44a2d301f90023e12");
-				LINKADDRESS addr;
+				SHA1Hash addr;
 				addr.fromString("5014d1b320016c9557ebf1b44a2d301f90023e11");
 				if(!NET_connectLink(&app->net, link, addr)){
 					cout << "Could not connect link "<<link->address.hex()<<" to "<<addr.hex()<<endl;

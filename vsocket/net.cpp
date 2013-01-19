@@ -306,7 +306,7 @@ int NET_run(Network &self) {
 				
 				stringstream ss;
 				ss<<time(0);
-				for(int c=0;c< rand_set.size();c++){
+				for(size_t c=0;c< rand_set.size();c++){
 					ss<<";"<<rand_set[c].hub_ip<<":"
 						<<rand_set[c].hub_port<<":" 
 						<<rand_set[c].peer_ip<<":"

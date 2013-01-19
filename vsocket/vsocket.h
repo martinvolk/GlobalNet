@@ -12,7 +12,7 @@ Free software. Part of the GlobalNet project.
 #include <cstring>
 
 namespace VSL {
-	typedef struct { unsigned char hash[20]; } SHA1HASH;
+	typedef struct { unsigned char hash[20]; } SHA1Hash;
 	typedef int VSOCKET;
 	
 	#define VSOCKET_DEFAULT_PEER_PORT 9000
@@ -23,7 +23,7 @@ namespace VSL {
 	}SOCKPROTO;
 	
 	struct sockaddr_t{
-		SHA1HASH sa_hash;
+		SHA1Hash sa_hash;
 		SOCKPROTO sa_protocol;
 		uint16_t sa_port; 
 		sockaddr_t *next; // for a chain of addresses 

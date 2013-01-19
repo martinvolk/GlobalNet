@@ -10,17 +10,21 @@ Free software. Part of the GlobalNet project.
 
 #include <string>
 #ifndef WIN32
-   #include <unistd.h>
-   #include <cstdlib>
-   #include <cstring>
-   #include <netdb.h>
-  
+	#include <unistd.h>
+	#include <cstdlib>
+	#include <cstring>
+	#include <netdb.h>
+	#include <arpa/inet.h>
+	#include <sys/time.h>
+	#include <signal.h>
+	#include <fcntl.h>
 #else
- #include <winsock2.h>
- #include <ws2tcpip.h>
- #include <wspiapi.h>
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+	#include <wspiapi.h>
 #endif
 
+/// openssl
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/sha.h>
@@ -28,6 +32,7 @@ Free software. Part of the GlobalNet project.
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 	
+/// stl 
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -38,12 +43,12 @@ Free software. Part of the GlobalNet project.
 #include <deque>
 #include <map>
 #include <set>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <signal.h>
 #include <numeric>
+
+/// boost
+#include <boost/shared_ptr.hpp>
+
 #include <udt.h>
-#include <fcntl.h>
 #include <math.h>
 
 using namespace std;
@@ -82,17 +87,18 @@ using namespace std;
 
 #define CONNECTION_TIMEOUT 10000
 
-typedef struct linkaddress_t {
+class SHA1Hash {
+private: 
 	char hash[20];
-	
-	linkaddress_t(){
+public: 
+	SHA1Hash(){
 		memset(hash, 0, sizeof(hash));
 	}
-	linkaddress_t(const linkaddress_t &other){
+	SHA1Hash(const SHA1Hash &other){
 		memcpy(hash, other.hash, sizeof(hash));
 	}
 	
-	bool operator < (const linkaddress_t &other) const{ 
+	bool operator < (const SHA1Hash &other) const{ 
 		char str[21];
 		char local[21];
 		memcpy(local, this->hash, sizeof(local));
@@ -101,7 +107,7 @@ typedef struct linkaddress_t {
 		local[20] = 0;
 		return strcmp(str, local);
 	}
-	bool operator == (const linkaddress_t &other) const{
+	bool operator == (const SHA1Hash &other) const{
 		return memcmp(this->hash, other.hash, sizeof(hash));
 	}
 	void fromString(string source){
@@ -128,10 +134,13 @@ typedef struct linkaddress_t {
 			}
 			return os.str();
 	}
+	void from_string(const string &str){
+		SHA1((unsigned char*)str.c_str(), str.length(), (unsigned char*)hash);
+	}
 	string str(){
 		return hex();
 	}
-} LINKADDRESS;
+};
 
 struct Packet;
 
@@ -299,7 +308,7 @@ struct Network;
 /** Writing to a link writes data to the connection */
 struct Link{
 	bool initialized;
-	//LINKADDRESS address; // sha1 hash of the public key 
+	//SHA1Hash address; // sha1 hash of the public key 
 	// intermediate peers involved in routing the link (chained connection)
 	Connection *nodes[MAX_LINK_NODES]; 
 	uint length;
@@ -310,7 +319,7 @@ struct Link{
 struct Service{
 	bool initialized;
 	
-	LINKADDRESS address; // the global address of the service 
+	SHA1Hash address; // the global address of the service 
 	
 	ConnectionState state;
 	
@@ -377,11 +386,11 @@ struct PeerRecord{
 		this->is_local = other.is_local;
 	}
 	
-	LINKADDRESS hash() const{
-		LINKADDRESS ret;
+	SHA1Hash hash() const{
+		SHA1Hash ret;
 		stringstream ss;
 		ss<<hub_ip<<hub_port<<peer_ip<<peer_port; 
-		SHA1((unsigned char*)ss.str().c_str(), ss.str().length(), (unsigned char*)ret.hash);
+		ret.from_string(ss.str());
 		return ret;
 	}
   bool operator<(const PeerRecord &other) const {
