@@ -27,7 +27,7 @@ Node *UDTNode::accept(){
 			 return 0;
 		}
 		
-		Node *conn = new UDTNode();
+		UDTNode *conn = new UDTNode();
 		char clientservice[NI_MAXSERV];
 		char host[NI_MAXHOST];
 		
@@ -129,6 +129,8 @@ void UDTNode::run(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
+	Node::run();
+	
 	if(!(this->state & CON_STATE_CONNECTED)){
 		//BIO_clear(this->write_buf);
 		//BIO_clear(this->read_buf);
@@ -215,15 +217,17 @@ void UDTNode::peg(Node *other){
 void UDTNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
-	
+		
 	while(!BIO_eof(this->write_buf)){
 		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
 			UDT::send(this->socket, tmp, rc, 0);
 		}
 	}
-	LOG("UDT: disconnected!");
+	
 	UDT::close(this->socket);
 	this->state = CON_STATE_DISCONNECTED;
+	
+	LOG("UDT: disconnected!");
 }
 
 UDTNode::UDTNode(){
@@ -231,5 +235,8 @@ UDTNode::UDTNode(){
 }
 
 UDTNode::~UDTNode(){
-	this->close();
+	LOG("UDT: deleting "<<this->host<<":"<<this->port);
+	
+	if(!(this->state & CON_STATE_DISCONNECTED))
+		this->close();
 }

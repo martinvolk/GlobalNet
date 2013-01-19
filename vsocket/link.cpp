@@ -62,9 +62,13 @@ int LinkNode::send(const char *data, size_t size){
 	// we place the data in the link buffer and send it out later in the 
 	// main loop. 
 	LOG("LINK: send(): "<<size<<" bytes!");
+	if(this->state & CON_STATE_INVALID) return -1;
 	return BIO_write(this->write_buf, data, size);
 }
+
 int LinkNode::recv(char *data, size_t size){
+	if(this->state & CON_STATE_INVALID) return -1;
+	if(BIO_eof(this->read_buf)) return 0;
 	return BIO_read(this->read_buf, data, size);
 }
 
@@ -79,6 +83,8 @@ void LinkNode::run(){
 	// function to encode the data and get it out to it's destination. 
 	int rc;
 	char tmp[SOCKET_BUF_SIZE];
+	
+	Node::run();
 	
 	// if the link is now connected
 	if((this->state & CON_STATE_INITIALIZED) && this->_output && this->_output->state & CON_STATE_CONNECTED){
@@ -143,6 +149,5 @@ LinkNode::LinkNode(){
 }
 
 LinkNode::~LinkNode(){
-	if(_output)
-		delete _output;
+	
 }

@@ -18,6 +18,12 @@ use "nc localhost 2000" to connect and use the console.
 #define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; (sock)->send(*sock, ss.str().c_str(), ss.str().length());}
 
 
+ConsoleService::~ConsoleService(){
+	for(uint c=0;c<this->clients.size();c++)
+		VSL::close(clients[c]);
+	if(this->socket) 
+		VSL::close(this->socket);
+}
 
 int ConsoleService::listen(const char *host, uint16_t port){
 	LOG("[console] starting console service on port "<<port);
@@ -42,7 +48,7 @@ void ConsoleService::run(){
 		VSL::send(client, &prompt[0], prompt.length());
 	}
 	
-	for(uint c=0;c<ARRSIZE(this->clients);c++){
+	for(uint c=0;c<this->clients.size();c++){
 		string cmd;
 		char str[1024];
 		int rs;

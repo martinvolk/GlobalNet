@@ -219,7 +219,7 @@ struct Network;
 class Node{
 public:
 	Node();
-	~Node();
+	virtual ~Node();
 	
 	NodeType type;
 	
@@ -233,7 +233,6 @@ public:
 	
 	bool server_socket;
 	
-	UDTSOCKET socket; // the underlying socket for peer connection
 	string host;
 	uint16_t port;
 	
@@ -321,6 +320,8 @@ public:
 	virtual void run();
 	virtual void peg(Node *other);
 	virtual void close();
+private:
+	int socket;
 };
 
 class UDTNode : public Node{
@@ -338,6 +339,8 @@ public:
 	virtual void run();
 	virtual void peg(Node *other);
 	virtual void close();
+private:
+	UDTSOCKET socket;
 };
 
 class BridgeNode : public Node{
@@ -427,19 +430,7 @@ public:
 	Network *net; // parent network
 };
 
-class Peer{
-public:
-	Peer(VSLNode *socket){
-		this->socket = socket;
-	}
-	~Peer(){
-		if(this->socket) delete socket;
-	}
-	VSLNode *socket;
-	string listen_port;
-	
-	time_t last_peer_list_submit; 
-};
+
 
 class PeerDatabase{
 public:
@@ -505,22 +496,41 @@ public:
 	Network();
 	~Network();
 	
-	Peer* getRandomPeer();
+	
 	LinkNode *createLink(const string &path);
 	LinkNode *createTunnel(const string &host, uint16_t port);
 	LinkNode *createCircuit(unsigned int length = 3);
+	void connect(const char *hostname, int port);
 	void run();
 	
 	VSLNode *server; 
 	vector<Node*> sockets;
 	vector<Link*> links;
-	list<Peer*> peers;
 	
 	//Peer *createPeer();
 	
 	PeerDatabase peer_db;
+	
+	class Peer{
+	public:
+		Peer(VSLNode *socket){
+			this->socket = socket;
+		}
+		~Peer(){
+			if(this->socket) delete socket;
+		}
+		VSLNode *socket;
+		string listen_port;
+		
+		time_t last_peer_list_submit; 
+	};
+	
+	list<Peer*> peers;
 private:
+	
+	Peer* getRandomPeer();
 	void _handle_command(Node *source, const Packet &pack);
+	
 };
 
 /*

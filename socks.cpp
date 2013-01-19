@@ -16,6 +16,15 @@ In local model we can have a socket where we accept connections and forward
 data to the remote end. On the remote end we can have a socket that connects 
 to another host and relays information from that connection. **/
 
+SocksService::~SocksService(){
+	vector< pair<int, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	while(it != this->local_clients.end()){
+		VSL::close((*it).second);
+		::close((*it).first);
+		it++;
+	}
+}
+
 void SocksService::run(){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
@@ -110,7 +119,7 @@ void SocksService::run(){
 		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
 			VSL::send(link, buf, rs);
 		} 
-		if(rs == 0){ // disconnected
+		if(rs == 0){ // client disconnected
 			LOG("SOCKS: client disconnected!");
 			close(sock);
 			VSL::close(link);
@@ -118,10 +127,17 @@ void SocksService::run(){
 			continue;
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
-			LOG("sending "<<rs<<" bytes to socks connection!");
-			if((rs = send(sock, buf, rs, MSG_NOSIGNAL))<0){
+			LOG("SOCKS: sending "<<rs<<" bytes to socks connection!");
+			if((send(sock, buf, rs, MSG_NOSIGNAL))<0){
 				
 			}
+		} 
+		if(rs < 0){
+			LOG("SOCKS: peer end disconnected.");
+			VSL::close(link);
+			it = local_clients.erase(it);
+			close(sock);
+			continue;
 		}
 		it++;
 		// try receiving data

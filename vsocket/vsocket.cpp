@@ -139,7 +139,7 @@ namespace VSL{
 		string host;
 		int port;
 		if(_parse_host_port(host_port, &host, &port)){
-			ERROR("ADD_PEER NOT IMPLEMENTED!");
+			net->connect(host.c_str(), port);
 			//Peer *node = net->createPeer();
 			//node->socket->connect(host.c_str(), port);
 			return 1;
@@ -190,6 +190,10 @@ namespace VSL{
 	}
 	
 	void run(){
+		for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
+				it != sockets.end(); it++)
+			(*it).second->run();
+			
 		net->run();
 	}
 	
@@ -209,19 +213,10 @@ namespace VSL{
 	
 	void print_stats(int socket){
 		uint nc = 0, nl = 0, np = 0;
-		/*for(uint j = 0;j<net->sockets.size();j++){
-			Node *sock = net->sockets[j];
-			if(sock->initialized){
-				nc++;
-				SEND_SOCK(socket, "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
-			}
+		for(list<Network::Peer*>::iterator it = net->peers.begin();
+				it != net->peers.end(); it++ ){
+			Network::Peer *peer = (*it);
+			SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
 		}
-		for(uint j = 0;j<ARRSIZE(net.peers);j++){
-			Peer *peer = &net.peers[j];
-			if(peer && peer->initialized){
-				np++;
-				SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
-			}
-		}*/
 	}
 }

@@ -105,7 +105,7 @@ Peer *Network::createPeer(){
 	return node;
 }
 */
-Peer *Network::getRandomPeer(){
+Network::Peer *Network::getRandomPeer(){
 	int r = rand() % peers.size();
 	if(!peers.size()) return 0;
 	int c=0;
@@ -123,6 +123,11 @@ Path: [ip:port]>[ip:port]
 
 LinkNode *Network::createLink(const string &path){
 	vector<string> tokens;
+	if(peers.size() == 0){
+		ERROR("NET: not enough peers to build a link!");
+		return 0;
+	}
+	
 	LinkNode *link = new LinkNode();
 	
 	tokenize(path, ">", tokens);
@@ -189,19 +194,13 @@ Network::Network(){
 	}
 }
 
-/*
-VSLNode *Network::connect(const char *hostname, int port){
-	Connection *conn = NET_allocConnection(self);
-	Peer *peer = NET_allocPeer(self);
-	
-	// set up a new relay connection to the host
-	CON_initPeer(*conn);
-	conn->connect(*conn, hostname, port);
-	peer->socket = conn;
-	
-	return conn;
+
+void Network::connect(const char *hostname, int port){
+	VSLNode *node = new VSLNode(0);
+	node->connect(hostname, port);
+	peers.push_back(new Peer(node));
 }
-*/
+
 void Network::_handle_command(Node *source, const Packet &pack){
 	if(pack.cmd.code == CMD_PEER_LIST){
 		vector<string> fields;
@@ -222,17 +221,12 @@ void Network::_handle_command(Node *source, const Packet &pack){
 			r.peer_port = atoi(parts[3].c_str()); 
 			r.last_update = time(0) - packet_time + atol(parts[4].c_str());
 			this->peer_db.insert(r);
-			LOG(r.hub_ip<<":"<<r.hub_port<<";"<<r.peer_ip<<":"<<r.peer_port);
+			//LOG(r.hub_ip<<":"<<r.hub_port<<";"<<r.peer_ip<<":"<<r.peer_port);
 		}
 	} 
 }
 
 void Network::run() {
-	// send / recv data from all connections
-	for(uint c=0;c<this->sockets.size(); c++){
-		this->sockets[c]->run();
-	}
-	
 	//this->peer_db.purge();
 	
 	// update our listen record
@@ -248,10 +242,16 @@ void Network::run() {
 				
 	// monitor peers for replies
 	for(list<Peer*>::iterator it = peers.begin(); 
-			it != peers.end(); it++){
+			it != peers.end(); ){
 		Peer *p = (*it);
 		Node *s = p->socket;
 		Packet pack;
+		if(!s || s->state & CON_STATE_DISCONNECTED){
+			delete p;
+			peers.erase(it++);
+			continue;
+		}
+		s->run();
 		if(s && s->state & CON_STATE_CONNECTED){
 			if(s->recvCommand(&pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
@@ -287,12 +287,13 @@ void Network::run() {
 						<<rand_set[c].peer_port<<":"
 						<<rand_set[c].last_update;
 				}
-				LOG(ss.str());
+				//LOG(ss.str());
 				p->socket->sendCommand(CMD_PEER_LIST, ss.str().c_str(), ss.str().length());
 	
 				p->last_peer_list_submit = time(0);
 			}
 		}
+		it++;
 	}
 
 	
@@ -336,13 +337,13 @@ LinkNode *Network::createCircuit(unsigned int length){
 }
 
 Network::~Network(){
+	LOG("NET: shutting down..");
+	
 	// close connections
-	/*
-	for(uint c=0;c<ARRSIZE(this->sockets); c++){
-		if(this->sockets[c].initialized)
-			CON_shutdown(this->sockets[c]);
+	for(list<Peer*>::iterator it = peers.begin(); it != peers.end(); it++){
+		delete *it;
 	}
-	*/
+	
 	// use this function to release the UDT library
 	UDT::cleanup();
 }

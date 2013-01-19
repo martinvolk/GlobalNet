@@ -70,12 +70,12 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count){
 	rand_set.reserve(this->db.size());
 	for(map<string, Record>::iterator it = this->db.begin(); 
 			it != this->db.end(); it++){
-		LOG((*it).second.hash().hex());
+		//LOG((*it).second.hash().hex());
 		rand_set.push_back((*it).second);
 	}
 	std::random_shuffle(rand_set.begin(), rand_set.end());
 	if(rand_set.size()>count) rand_set.resize(count);
-	LOG("PDB: size: "<<rand_set.size());
+	//LOG("PDB: size: "<<rand_set.size());
 	return rand_set;
 }
 
@@ -84,11 +84,12 @@ void PeerDatabase::loop(){
 	while(running){
 		{
 			LOCK(mu);
-			
+			/*
 			vector<Record> peers;
 			peers.reserve(db.size());
 			for(map<string, Record>::iterator it = this->db.begin(); 
 					it != this->db.end(); ){ peers.push_back((*it).second); } 
+			*/
 			/*
 			Connection con;	
 			con.connect("random route");

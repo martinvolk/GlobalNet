@@ -165,6 +165,8 @@ void SSLNode::run(){
 		return;
 	}
 	
+	Node::run();
+		
 	// if we are waiting for connection and the downline has changed it's state
 	// to being connected, we can now switch to handshake mode and do the handshake. 
 	if((this->state & CON_STATE_INITIALIZED) && this->ssl && this->ctx && (this->_output->state & CON_STATE_CONNECTED)){
@@ -280,9 +282,10 @@ void SSLNode::close(){
 			}
 		}
 	}
-	LOG("SSL: disconnected!");
 	this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
+	
+	LOG("SSL: disconnected!");
 }
 SSLNode::SSLNode(){
 	this->ssl = 0;
@@ -294,8 +297,12 @@ SSLNode::SSLNode(){
 }
 
 SSLNode::~SSLNode(){
-	this->close();
-		
+	LOG("SSL: deleting "<<this->host<<":"<<this->port);
+	
+	if(!(this->state & CON_STATE_INVALID))
+		this->close();
+	
+	// free ssl variables
 	if(this->ssl){
 		SSL_shutdown(this->ssl);
 		SSL_free(this->ssl);

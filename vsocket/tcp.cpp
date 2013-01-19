@@ -63,7 +63,7 @@ Node *TCPNode::accept(){
 	char clientservice[32];
 	
 	int z;
-	Node *con = 0;
+	TCPNode *con = 0;
 	
 	if(!(this->state & CON_STATE_LISTENING)){
 		return 0;
@@ -160,6 +160,9 @@ void TCPNode::run(){
 	Packet pack;
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
+	
+	Node::run();
+		
 	/*
 	if(this->state & CON_STATE_CONNECTING && socket_writable(this->socket)>0){
 		this->state = CON_STATE_ESTABLISHED;
@@ -213,6 +216,8 @@ TCPNode::TCPNode(){
 }
 
 TCPNode::~TCPNode(){
-	if(_output)
-		delete _output;
+	LOG("TCP: deleting "<<this->host<<":"<<this->port);
+	
+	if(!(this->state & CON_STATE_DISCONNECTED))
+		this->close();
 }

@@ -64,6 +64,8 @@ using namespace std;
 
 class Service{
 public:
+	virtual ~Service() {}
+	
 	// on server side
 	vector<VSL::VSOCKET> clients; // client sockets
 	vector<VSL::VSOCKET> links;
@@ -83,11 +85,13 @@ public:
 
 class SocksService : public Service{
 public:
+	~SocksService();
 	virtual int listen(const char *host, uint16_t port);
 	virtual void run();
 };
 
 class ConsoleService : public Service{
+	~ConsoleService();
 	virtual int listen(const char *host, uint16_t port);
 	virtual void run();
 };
