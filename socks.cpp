@@ -16,13 +16,13 @@ In local model we can have a socket where we accept connections and forward
 data to the remote end. On the remote end we can have a socket that connects 
 to another host and relays information from that connection. **/
 
-static void _socks_run(Service &self){
+void SocksService::run(){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
 	char buf[SOCKET_BUF_SIZE];
 	int z;
 	
-	if((z = accept4(self.local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
+	if((z = accept4(this->local_socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		LOG("[server socket] client connected!");
 		
 		/// read the first introduction specifying an ip address that we are connecting to
@@ -87,7 +87,7 @@ static void _socks_run(Service &self){
 			//memcpy(socks.data+4, &nport, 2);
 			send(z, &socks, 10, 0);
 			
-			self.local_clients.push_back(pair<int, VSL::VSOCKET>(z, link));
+			this->local_clients.push_back(pair<int, VSL::VSOCKET>(z, link));
 			
 			
 			val = fcntl(z, F_GETFL, 0);
@@ -100,8 +100,8 @@ static void _socks_run(Service &self){
 	}
 	
 	/// process data from local clients
-	vector< pair<int, VSL::VSOCKET> >::iterator it = self.local_clients.begin();
-	while(it != self.local_clients.end()){
+	vector< pair<int, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	while(it != this->local_clients.end()){
 		int sock = (*it).first;
 		VSL::VSOCKET link = (*it).second;
 		int rs;
@@ -114,7 +114,7 @@ static void _socks_run(Service &self){
 			LOG("SOCKS: client disconnected!");
 			close(sock);
 			VSL::close(link);
-			it = self.local_clients.erase(it);
+			it = this->local_clients.erase(it);
 			continue;
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
@@ -128,7 +128,7 @@ static void _socks_run(Service &self){
 	}
 }
 
-int _socks_listen(Service &self, const char *host, uint16_t port){
+int SocksService::listen(const char *host, uint16_t port){
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -136,7 +136,7 @@ int _socks_listen(Service &self, const char *host, uint16_t port){
 	int val;
 	string str;
 	
-	s = socket(PF_INET,SOCK_STREAM,0);  
+	s = ::socket(PF_INET,SOCK_STREAM,0);  
 	if ( s == -1 )  {
 		SOCK_ERROR("socket()"); 
 		goto close;
@@ -160,7 +160,7 @@ int _socks_listen(Service &self, const char *host, uint16_t port){
 	/* 
 	* Set listen mode  
 	*/  
-	if ( listen(s, 10) == -1 ) {
+	if (::listen(s, 10) == -1 ) {
 		SOCK_ERROR("listen(2)");  
 		goto close;
 	}
@@ -171,7 +171,7 @@ int _socks_listen(Service &self, const char *host, uint16_t port){
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 
 	
-	self.local_socket = s;
+	this->local_socket = s;
 	return 1;
 	
 close:
@@ -179,9 +179,4 @@ close:
 	return 0;
 }
 
-void SRV_initSOCKS(Service &self){
-	self.initialized = true;
-	self.listen = _socks_listen;
-	self.run = _socks_run;
-}
 

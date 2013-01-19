@@ -7,12 +7,9 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
-struct peer_data_t{
-	Connection *peer;
-};
 
-int _peer_connect(Connection &self, const char *hostname, uint16_t port){ 
-	if(self.state & CON_STATE_CONNECTED){
+int VSLNode::connect(const char *hostname, uint16_t port){ 
+	if(this->state & CON_STATE_CONNECTED){
 		cout<<"CON_connect: connection is already connected. Please call CON_close() before establishing a new one!"<<endl;
 		return 0;
 	}
@@ -22,27 +19,26 @@ int _peer_connect(Connection &self, const char *hostname, uint16_t port){
 	// once the connection succeeds, the underlying node will change it's 
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
-	self.state = CON_STATE_CONNECTING;
-	self._output->connect(*self._output, hostname, port);
+	this->state = CON_STATE_CONNECTING;
+	this->_output->connect(hostname, port);
 	
 	return 1;
 }
 
-Connection *_peer_accept(Connection &self){
+Node *VSLNode::accept(){
 	// accept means accepting a connection on a listening socket
 	// so we have no reason to do anything if we are not in listen state
 	// a node can be put in listen state by calling listen()
-	if(!(self.state & CON_STATE_LISTENING) || !self._output)
+	if(!(this->state & CON_STATE_LISTENING) || !this->_output)
 		return 0;
 	
 	// since peer node can't accept any connections directly, 
 	// forward the code to the next node. 
-	Connection *peer = 0;
-	if((peer = self._output->accept(*self._output))){
+	Node *peer = 0;
+	if((peer = this->_output->accept())){
 		// the output has a new stream connected. 
 		// we need to create a new PEER node that will handle this new connection. 
-		Connection *con = NET_allocConnection(*self.net);
-		CON_initPeer(*con, con);
+		VSLNode *con = new VSLNode(0);
 		
 		// the new connection is technically not connected. 
 		// it will become connected once "peer" has become connected. 
@@ -61,17 +57,17 @@ Connection *_peer_accept(Connection &self){
 	return 0;
 }
 
-static int _peer_listen(Connection &self, const char *host, uint16_t port){
+int VSLNode::listen(const char *host, uint16_t port){
 	// listening means that we are setting up a connection in order to listen for other connections
 	// since peer can not directly listen on anything, we just forward the request. 
-	if(!self._output || (self.state & CON_STATE_CONNECTED)){
+	if(!this->_output || (this->state & CON_STATE_CONNECTED)){
 		LOG("You can not listen on this socket.");
 		return -1;
 	}
-	self.state = CON_STATE_LISTENING;
-	if(self._output->listen(*self._output, host, port)>0){
-		self.host = self._output->host;
-		self.port = self._output->port;
+	this->state = CON_STATE_LISTENING;
+	if(this->_output->listen(host, port)>0){
+		this->host = this->_output->host;
+		this->port = this->_output->port;
 		return 1;
 	}
 	return -1;
@@ -85,28 +81,28 @@ this function should only be used to explicitly send data to the node.
 If the node has input connected then it will automatically also read
 data from it's input. 
 **/
-int _peer_send(Connection &self, const char *data, size_t size){
+int VSLNode::send(const char *data, size_t size){
 	// calling "send" on peer connection means that we want to send some data
 	// therefore we write the data into an input buffer, and then later in the loop
 	// we convert this buffer to a CMD_DATA package and send it down the line. 
-	return BIO_write(self.in_write, data, size);
+	return BIO_write(this->in_write, data, size);
 }
 
 /** 
 Reads a data from the decoded data queue
 **/ 
-int _peer_recv(Connection &self, char *data, size_t size){
+int VSLNode::recv(char *data, size_t size){
 	// when data packets arrive, they are stripped of meta data and the data 
 	// is put in the read buffer to be read using this function by the _input node. 
 	// this buffer will only contain the contents of received DATA packets. 
-	return BIO_read(self.in_read, data, size);
+	return BIO_read(this->in_read, data, size);
 }
 
 /**
 SendCommand is supported by nodes that support commands. Our peer node is one of them. 
 A SOCKS server for example will support commands as well. If a 
 **/
-int _peer_send_command(Connection &self, ConnectionMessage cmd, const char *data, size_t size){
+int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size){
 	// sending a command means that we want to send the data as an argument to a command
 	// this function writes a command packet to the output buffer, which is then sent 
 	// down the network in the main loop. inserts a command into the stream. 
@@ -114,14 +110,14 @@ int _peer_send_command(Connection &self, ConnectionMessage cmd, const char *data
 	pack.cmd.code = cmd;
 	pack.cmd.size = size;
 	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), (unsigned long)size)); 
-	return BIO_write(self.write_buf, pack.c_ptr(), pack.size());
+	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
-int _peer_recv_command(Connection &self, Packet *dst){
+int VSLNode::recvCommand(Packet *dst){
 	//LOG("PEER: RECV COMMAND!");
-	if(self._recv_packs.size()){
-		*dst = self._recv_packs.front();
-		self._recv_packs.pop_front();
+	if(this->_recv_packs.size()){
+		*dst = this->_recv_packs.front();
+		this->_recv_packs.pop_front();
 		return 1;
 	}
 	return 0;
@@ -131,30 +127,30 @@ int _peer_recv_command(Connection &self, Packet *dst){
 // instead of the default UDT socket. 
 ***/
 
-static void _peer_peg(Connection &self, Connection *other){
+void VSLNode::peg(Node *other){
 	// this function pegs the output of our SSL node as input to another node 
 	// we need to override the default function because we have a custom structure
 	
 	// close the udt connection and connect the output of the 
 	// ssl connection to the input of this peer 
-	Connection *udt = self._output->_output;
-	udt->close(*udt); 
+	Node *udt = this->_output->_output;
+	udt->close(); 
 	
 	// now bridge the end of the ssl connection with "other"
-	self._output->_output = other;
-	other->_input = self._output;
+	this->_output->_output = other;
+	other->_input = this->_output;
 }
 
 
 /**
 This function handles incoming packets received from _output node. 
 **/
-static void _con_handle_packet(Connection &self, const Packet &packet){
+void VSLNode::_handle_packet(const Packet &packet){
 	// if we received DATA packet then data is stored in the buffer that will
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
 		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
-		BIO_write(self.in_read, packet.data, packet.cmd.size);
+		BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	// this one is sent as a request to make current node connect to a different host
 	// the request will originate from _output and the new connection should be 
@@ -162,10 +158,10 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 	else if(packet.cmd.code == RELAY_CONNECT){
 		// receiving a connect when we already have an input node is invalid
 		// although in the future it may be useful as a way to reuse intermediate peer links. 
-		if(self._input){
+		if(this->_input){
 			ERROR("RELAY_CONNECT received when we already have an _input node.");
 			// disconnect
-			self.close(self);
+			this->close();
 			return;
 		}
 		// data contains a string of format PROTO:IP:PORT
@@ -204,15 +200,14 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 		// have no idea about it because it is only responsible for monitoring
 		// it's _output. A bridge will monitor the connection state and appropriately
 		// send a disconnect to the other node that is connected to it. 
-		Connection *other = NET_createConnection(*self.net, proto.c_str());
-		Connection *bridge = NET_allocConnection(*self.net);
-		CON_initBRIDGE(*bridge);
+		Node *other = Node::createNode(proto.c_str());
+		BridgeNode *bridge = new BridgeNode();
 		
-		other->connect(*other, host.c_str(), port);
+		other->connect(host.c_str(), port);
 		
 		// self<->bridge<->other
-		bridge->_input = &self;
-		self._input = bridge; 
+		bridge->_input = this;
+		this->_input = bridge; 
 		bridge->_output = other; 
 		other->_input = bridge;
 	}
@@ -223,11 +218,11 @@ static void _con_handle_packet(Connection &self, const Packet &packet){
 	else if(packet.cmd.code == RELAY_CONNECT_OK){
 		// we simply set our state to established as well
 		// if we have another bridge monitoring us, then it will pick up on this
-		self.state = CON_STATE_ESTABLISHED; 
+		this->state = CON_STATE_ESTABLISHED; 
 	}
 }
 
-void _peer_run(Connection &self){
+void VSLNode::run(){
 	// receive a complete packet and store it in the packet buffer
 	// if no complete packet is available, the function returns 0
 	// important: the data may arrive in chunks. so we need to temporarily store 
@@ -236,76 +231,79 @@ void _peer_run(Connection &self){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
+	if(_output)
+		_output->run();
+	
 	// if we are waiting for connection and connection of the underlying node has been established
-	if((self.state & CON_STATE_CONNECTING) && self._output && (self._output->state & CON_STATE_CONNECTED)){
+	if((this->state & CON_STATE_CONNECTING) && this->_output && (this->_output->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
-		self.host = self._output->host;
-		self.port = self._output->port;
+		this->host = this->_output->host;
+		this->port = this->_output->port;
 		// send information about our status to the other peer. 
 		
 		// toggle our state to connected as well. 
-		self.state = CON_STATE_ESTABLISHED;
+		this->state = CON_STATE_ESTABLISHED;
 	}
 	// handle data flow if we are connected to a peer. 
-	else if(self.state & CON_STATE_ESTABLISHED){
+	else if(this->state & CON_STATE_ESTABLISHED){
 		// we have an extra buffer where all input data is put
 		// this buffer is filled in send() function that is called by someone else
 		// all this data belongs in a DATA packet. This data could not have been
 		// directly writen to write_buf precisely because it needs to be formatted. 
-		while((rc = BIO_read(self.in_write, tmp, SOCKET_BUF_SIZE))>0){
-			LOG("[sending data] "<<rc<<" bytes to "<<self.host<<":"<<self.port);
+		while((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
+			LOG("[sending data] "<<rc<<" bytes to "<<this->host<<":"<<this->port);
 			
-			self.sendCommand(self, CMD_DATA, tmp, rc);
+			this->sendCommand(CMD_DATA, tmp, rc);
 		}
 		
 		/// now we process our write_buf and fill read_buf with data from _ouput
 		
 		// send unsent data 
-		while(self._output && !BIO_eof(self.write_buf)){
+		while(this->_output && !BIO_eof(this->write_buf)){
 			char tmp[SOCKET_BUF_SIZE];
-			int rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE);
-			self._output->send(*self._output, tmp, rc);
+			int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
+			this->_output->send(tmp, rc);
 		}
 		
 		// attempt to receive some data from the underlying connection and decode it
-		if(self._output && (rc = self._output->recv(*self._output, tmp, sizeof(tmp)))>0){
-			int start = self._recv_buf.size();
-			self._recv_buf.resize(self._recv_buf.size()+rc);
-			memcpy(&self._recv_buf[start], tmp, rc);
+		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
+			int start = this->_recv_buf.size();
+			this->_recv_buf.resize(this->_recv_buf.size()+rc);
+			memcpy(&this->_recv_buf[start], tmp, rc);
 			
 			// try to read as many complete packets as possible from the recv buf
-			while(self._recv_buf.size()){
+			while(this->_recv_buf.size()){
 				// now we need to check if the packet is complete
-				PacketHeader *cmd = (PacketHeader*)&self._recv_buf[0];
+				PacketHeader *cmd = (PacketHeader*)&this->_recv_buf[0];
 				Packet packet;
-				if(cmd->size <= self._recv_buf.size()-sizeof(PacketHeader)){
+				if(cmd->size <= this->_recv_buf.size()-sizeof(PacketHeader)){
 					// check checksum here
 					unsigned size = min(ARRSIZE(packet.data), (unsigned long)cmd->size);
 					if(size < cmd->size){
 						ERROR("Packet exceeds maximum allowed size!");
 						return;
 					}
-					memcpy(packet.data, &self._recv_buf[0]+sizeof(PacketHeader), size);
+					memcpy(packet.data, &this->_recv_buf[0]+sizeof(PacketHeader), size);
 					memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
-					packet.source = &self;
+					packet.source = this;
 					
-					//LOG("CON_process: received complete packet at "<<self.host<<":"<<self.port<<" cmd: "<<
+					//LOG("CON_process: received complete packet at "<<this->host<<":"<<this->port<<" cmd: "<<
 					//	packet.cmd.code<<" datalength: "<<rc);
-					//packet.cmd.size<<" recvsize: "<<self._recv_buf.size());
+					//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
 					
 					// if we have an output socket then we write the received data directly to that socket
-					//LOG(self.bridge);
-					_con_handle_packet(self, packet);
+					//LOG(this->bridge);
+					_handle_packet(packet);
 					
-					self._recv_packs.push_back(packet);
+					this->_recv_packs.push_back(packet);
 					
 					// update the recv_buf to only have the trailing data that has not 
 					// yet been decoded. 
-					self._recv_buf = vector<char>(
-						self._recv_buf.begin()+cmd->size+sizeof(PacketHeader), 
-						self._recv_buf.end());
+					this->_recv_buf = vector<char>(
+						this->_recv_buf.begin()+cmd->size+sizeof(PacketHeader), 
+						this->_recv_buf.end());
 				} else {
-					LOG("CON_process: received partial data of "<<rc<< " bytes "<<(self._recv_buf.size()-sizeof(PacketHeader)));
+					LOG("CON_process: received partial data of "<<rc<< " bytes "<<(this->_recv_buf.size()-sizeof(PacketHeader)));
 					break;
 				}
 			}
@@ -314,64 +312,46 @@ void _peer_run(Connection &self){
 	// we always should check whether the output has closed so that we can graciously 
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
-	if(self._output && self._output->state & CON_STATE_DISCONNECTED){
+	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
 		LOG("PEER: underlying connection lost. Disconnected!");
-		self.state = CON_STATE_DISCONNECTED;
+		this->state = CON_STATE_DISCONNECTED;
 	}
 }
 
-static void _peer_close(Connection &self){
+void VSLNode::close(){
 	// send unsent data 
-	if(!self._output){
-		self.state = CON_STATE_DISCONNECTED;
+	if(!this->_output){
+		this->state = CON_STATE_DISCONNECTED;
 		return;
 	}
-	while(!BIO_eof(self.write_buf)){
+	while(!BIO_eof(this->write_buf)){
 		char tmp[SOCKET_BUF_SIZE];
-		int rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE);
-		self._output->send(*self._output, tmp, rc);
+		int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
+		this->_output->send(tmp, rc);
 	}
 	LOG("PEER: disconnected!");
-	self._output->close(*self._output);
-	self.state = CON_STATE_WAIT_CLOSE;
-}
-int CON_initPeer(Connection &self, Connection *ssl){
-	CON_init(self);
-	
-	if(!ssl){
-		Connection *ssl = NET_allocConnection(*self.net);
-		Connection *udp = NET_allocConnection(*self.net);
-		
-		if(!ssl || !udp){
-			ERROR("init_peer: could not allocate necessary connection objects!");
-			return 0;
-		}
-		
-		CON_initSSL(*ssl);
-		CON_initUDT(*udp);
-		ssl->_output = udp;
-		udp->_input = ssl;
-		ssl->_input = &self;
-		self._output = ssl;
-	} else {
-		self._output = ssl;
-	}
-	
-	self.type = NODE_PEER;
-	
-	self.connect = _peer_connect;
-	self.accept = _peer_accept;
-	self.send = _peer_send;
-	self.recv = _peer_recv;
-	self.sendCommand = _peer_send_command;
-	self.recvCommand = _peer_recv_command;
-	self.listen = _peer_listen;
-	self.run = _peer_run;
-	self.peg = _peer_peg;
-	self.close = _peer_close;
-	
-	//self.on_data_received = _peer_on_data_received;
-	return 1;
+	this->_output->close();
+	this->state = CON_STATE_WAIT_CLOSE;
 }
 
+VSLNode::VSLNode(Node *next){
+	if(!next){
+		SSLNode *ssl = new SSLNode();
+		UDTNode *udp = new UDTNode();
+		
+		ssl->_output = udp;
+		udp->_input = ssl;
+		ssl->_input = this;
+		this->_output = ssl;
+	} else {
+		this->_output = next;
+	}
+	
+	this->type = NODE_PEER;
+}
+
+VSLNode::~VSLNode(){
+	if(_output)
+		delete _output;
+}
 

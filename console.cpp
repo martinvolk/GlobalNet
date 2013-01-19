@@ -19,34 +19,35 @@ use "nc localhost 2000" to connect and use the console.
 
 
 
-static int _console_listen(Service &self, const char *host, uint16_t port){
+int ConsoleService::listen(const char *host, uint16_t port){
 	LOG("[console] starting console service on port "<<port);
 	
 	VSL::VSOCKET con = VSL::socket(VSL::SOCKET_TCP);
 	stringstream ss;
 	ss<<host<<":"<<port;
 	VSL::listen(con, ss.str().c_str());
-	self.socket = con;
+	this->socket = con;
 	
 	return 1;
 }
 
-static void _console_run(Service &self){
+void ConsoleService::run(){
 	VSL::VSOCKET client; 
 	
-	if((client = SRV_accept(self))){
+	if((client = VSL::accept(this->socket))){
 		LOG("new client connected to the console!");
+		clients.push_back(client);
 		
 		string prompt = "gnet# ";
 		VSL::send(client, &prompt[0], prompt.length());
 	}
 	
-	for(uint c=0;c<ARRSIZE(self.clients);c++){
+	for(uint c=0;c<ARRSIZE(this->clients);c++){
 		string cmd;
 		char str[1024];
 		int rs;
 		
-		VSL::VSOCKET con = self.clients[c];
+		VSL::VSOCKET con = this->clients[c];
 		if(!con) continue;
 		 
 		if((rs = VSL::recv(con, str, 1024))>0){
@@ -60,37 +61,37 @@ static void _console_run(Service &self){
 			LOG("[console] processing command " << cmd);
 			
 			if(cmd.compare("stats")){
-				VSL::print_stats(self.clients[c]);
+				VSL::print_stats(this->clients[c]);
 				/*
 				uint nc = 0, nl = 0, np = 0;
-				for(uint j = 0;j<ARRSIZE(self.net->sockets);j++){
-					Connection *sock = &self.net->sockets[j];
+				for(uint j = 0;j<ARRSIZE(this->net->sockets);j++){
+					Connection *sock = &this->net->sockets[j];
 					if(sock->initialized){
 						nc++;
-						SEND_SOCK(self.clients[c], "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
+						SEND_SOCK(this->clients[c], "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
 					}
 				}
-				for(uint j = 0;j<ARRSIZE(self.net->links);j++){
-					Link *link = &self.net->links[j];
+				for(uint j = 0;j<ARRSIZE(this->net->links);j++){
+					Link *link = &this->net->links[j];
 					if(link->initialized){
 						nl++;
 						//SEND_SOCK(*c, "socket: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 					}
 				}
-				for(uint j = 0;j<ARRSIZE(self.net->peers);j++){
-					Peer *peer = &self.net->peers[j];
+				for(uint j = 0;j<ARRSIZE(this->net->peers);j++){
+					Peer *peer = &this->net->peers[j];
 					if(peer && peer->initialized){
 						np++;
-						SEND_SOCK(self.clients[c], "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
+						SEND_SOCK(this->clients[c], "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
 					}
 				}
-				SEND_SOCK(con, "Connections: "<<nc<<"/"<<ARRSIZE(self.net->sockets)<<", Links: "<<nl<<"/"<<ARRSIZE(self.net->links)<<
-						"Peers: "<<np<<"/"<<ARRSIZE(self.net->peers));*/
+				SEND_SOCK(con, "Connections: "<<nc<<"/"<<ARRSIZE(this->net->sockets)<<", Links: "<<nl<<"/"<<ARRSIZE(this->net->links)<<
+						"Peers: "<<np<<"/"<<ARRSIZE(this->net->peers));*/
 				/*		
-				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){
+				for(vector<Connection*>::iterator x = this->net->peers.begin(); x != this->net->peers.end(); x++){
 					SEND_SOCK(*c, "connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 				}
-				for(vector<Link*>::iterator l = self.net->links.begin(); l != self.net->links.end(); l++){
+				for(vector<Link*>::iterator l = this->net->links.begin(); l != this->net->links.end(); l++){
 					SEND_SOCK(*c, "link: ");
 					for(vector<Connection*>::iterator x = (*l)->nodes.begin(); x != (*l)->nodes.end(); x++){
 						SEND_SOCK(*c, "    connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
@@ -100,10 +101,10 @@ static void _console_run(Service &self){
 			else if(cmd.compare("listpeers")){
 				LOG("test");
 				/*
-				for(vector<Connection*>::iterator x = self.net->peers.begin(); x != self.net->peers.end(); x++){
+				for(vector<Connection*>::iterator x = this->net->peers.begin(); x != this->net->peers.end(); x++){
 					SEND_SOCK(*c, "connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 				}
-				for(vector<Link*>::iterator l = self.net->links.begin(); l != self.net->links.end(); l++){
+				for(vector<Link*>::iterator l = this->net->links.begin(); l != this->net->links.end(); l++){
 					SEND_SOCK(*c, "link: ");
 					for(vector<Connection*>::iterator x = (*l)->nodes.begin(); x != (*l)->nodes.end(); x++){
 						SEND_SOCK(*c, "    connection: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
@@ -116,7 +117,7 @@ static void _console_run(Service &self){
 				cout << "Attempting to send test packets.."<<endl;
 				//Packet pack;
 				/*
-				for(vector<Connection*>::iterator c = self.net->peers.begin(); c != self.net->peers.end(); c++){
+				for(vector<Connection*>::iterator c = this->net->peers.begin(); c != this->net->peers.end(); c++){
 					cout << "Sending test packet.."<<endl;
 					string str = "Hello World";
 					pack.cmd.code = CMD_TEST;
@@ -185,9 +186,3 @@ static void _console_run(Service &self){
 	}
 }
 
-
-void SRV_initCONSOLE(Service &self){
-	self.initialized = true;
-	self.listen = _console_listen;
-	self.run = _console_run;
-}

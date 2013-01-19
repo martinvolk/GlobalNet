@@ -62,12 +62,11 @@ using namespace std;
 #define MAX_SOCKETS 1024
 
 
-struct Service{
-	bool initialized;
-	
+class Service{
+public:
 	// on server side
-	VSL::VSOCKET clients[MAX_SOCKETS]; // client sockets
-	VSL::VSOCKET links[MAX_LINKS];
+	vector<VSL::VSOCKET> clients; // client sockets
+	vector<VSL::VSOCKET> links;
 	
 	// on client side 
 	VSL::VSOCKET server_link;  // link through which we can reach the other end
@@ -78,8 +77,19 @@ struct Service{
 	// listening socket
 	VSL::VSOCKET socket;
 	
-	int (*listen)(Service &self, const char *host, uint16_t port);
-	void (*run)(Service &self);
+	virtual int listen(const char *host, uint16_t port) = 0;
+	virtual void run() = 0;
+};
+
+class SocksService : public Service{
+public:
+	virtual int listen(const char *host, uint16_t port);
+	virtual void run();
+};
+
+class ConsoleService : public Service{
+	virtual int listen(const char *host, uint16_t port);
+	virtual void run();
 };
 
 struct Application{

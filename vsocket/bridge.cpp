@@ -9,89 +9,78 @@ Free software. Part of the GlobalNet project.
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Connection *_bridge_accept(Connection &self){
+Node *BridgeNode::accept(){
 	ERROR("CON_accept not implemented!");
 	return 0;
 }
 
-static int _bridge_connect(Connection &self, const char *hostname, uint16_t port){
+int BridgeNode::connect(const char *hostname, uint16_t port){
 	ERROR("CON_connect not implemented!");
 	return -1;
 }
 
-static int _bridge_send(Connection &self, const char *data, size_t size){
+int BridgeNode::send(const char *data, size_t size){
 	ERROR("CON_send not implemented!");
 	return -1;
 }
-static int _bridge_recv(Connection &self, char *data, size_t size){
+int BridgeNode::recv(char *data, size_t size){
 	// recv will be called by both of our nodes usually but we will handle 
 	// the data flow in the main loop.. 
 	return -1;
 }
 
-static void _bridge_run(Connection &self){
+void BridgeNode::run(){
 	// if we are still disconnected and our monitored connection has switched to connected state
 	// then we have to notify our input of the change by sending the RELAY_CONNECT_OK command. 
-	if(self._output){
-		if(!(self.state & CON_STATE_CONNECTED) && self._output->state & CON_STATE_CONNECTED){
-			if(self._input){
-				self._input->sendCommand(*self._input, RELAY_CONNECT_OK, "", 0);
+	if(this->_output){
+		if(!(this->state & CON_STATE_CONNECTED) && this->_output->state & CON_STATE_CONNECTED){
+			if(this->_input){
+				this->_input->sendCommand(RELAY_CONNECT_OK, "", 0);
 			}
 			LOG("BRIDGE: connection established on the remote end!");
-			self.state = CON_STATE_ESTABLISHED; 
+			this->state = CON_STATE_ESTABLISHED; 
 		}
 		// if we think we are connected and the other node has gone to disconnected, 
 		// then we just disconnect from the peer. All disconnected connections are 
 		// cleaned up after all other loops have run next time. 
-		if(self.state & CON_STATE_CONNECTED && self._output->state & CON_STATE_INVALID){
+		if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_INVALID){
 			LOG("BRIDGE: connection _output disconnected!");
-			if(self._input){
-				self._input->close(*self._input);
+			if(this->_input){
+				this->_input->close();
 			}
-			self.state = CON_STATE_DISCONNECTED;
+			this->state = CON_STATE_DISCONNECTED;
 		}
-		if(self.state & CON_STATE_CONNECTED && self._input->state & CON_STATE_INVALID){
-			if(self._output){
-				self._output->close(*self._output);
+		if(this->state & CON_STATE_CONNECTED && this->_input->state & CON_STATE_INVALID){
+			if(this->_output){
+				this->_output->close();
 			}
 			LOG("BRIDGE: connection _input disconnected!");
-			self.state = CON_STATE_DISCONNECTED;
+			this->state = CON_STATE_DISCONNECTED;
 		}
 	}
 	
-	if(self._input && self._output){
+	if(this->_input && this->_output){
 		char tmp[SOCKET_BUF_SIZE];
 		int rc;
 		
 		// read data from one end and forward it to the other end and vice versa
-		if ((rc = self._input->recv(*self._input, tmp, SOCKET_BUF_SIZE))>0){
+		if ((rc = this->_input->recv(tmp, SOCKET_BUF_SIZE))>0){
 			LOG("BRIDGE: received "<<rc<<" bytes from _input");
-			self._output->send(*self._output, tmp, rc);
+			this->_output->send(tmp, rc);
 		}
-		if ((rc = self._output->recv(*self._output, tmp, SOCKET_BUF_SIZE))>0){
+		if ((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
 			LOG("BRIDGE: received "<<rc<<" bytes from output!");
-			self._input->send(*self._input, tmp, rc);
+			this->_input->send(tmp, rc);
 		}
 	}
 }
-static int _bridge_listen(Connection &self, const char *host, uint16_t port){
+int BridgeNode::listen(const char *host, uint16_t port){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }
-static void _bridge_close(Connection &self){
+void BridgeNode::close(){
 	ERROR("CON_close not implemented!");
 }
 
-void CON_initBRIDGE(Connection &self){
-	CON_init(self);
-	
-	self.connect = _bridge_connect;
-	self.send = _bridge_send;
-	self.recv = _bridge_recv;
-	self.listen = _bridge_listen;
-	self.accept = _bridge_accept;
-	self.run = _bridge_run;
-	self.close = _bridge_close;
-}
 
 

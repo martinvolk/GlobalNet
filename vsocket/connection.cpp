@@ -9,115 +9,111 @@ Free software. Part of the GlobalNet project.
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Connection *_con_accept(Connection &self){
+Node * Node::accept(){
 	ERROR("CON_accept not implemented!");
 	return 0;
 }
 
-static int _con_connect(Connection &self, const char *hostname, uint16_t port){
+int Node::connect(const char *hostname, uint16_t port){
 	ERROR("CON_connect not implemented!");
 	return -1;
 }
 
-static int _con_send(Connection &self, const char *data, size_t size){
+int Node::send(const char *data, size_t size){
 	ERROR("CON_send not implemented!");
 	return -1;
 }
-static int _con_recv(Connection &self, char *data, size_t size){
+int Node::recv(char *data, size_t size){
 	ERROR("CON_recv not implemented!");
 	return -1;
 }
 
 
-static int _con_send_command(Connection &self, ConnectionMessage msg, const char *data, size_t size){
+int Node::sendCommand(NodeMessage msg, const char *data, size_t size){
 	// the default behavior is to simply pass the command down the line
-	if(self._output)
-		self._output->sendCommand(*self._output, msg, data, size);
+	if(this->_output)
+		this->_output->sendCommand(msg, data, size);
 	return 1;
 }
 
-static int _con_recv_command(Connection &self, Packet *dst){
+int Node::recvCommand(Packet *dst){
 	// only used by Peer. 
 	//ERROR("CON: call to recvCommand(): NOT IMPLEMENTED!"); 
 	return 0;
 }
 
-static void _con_run(Connection &self){
+void Node::run(){
 	ERROR("CON_run not implemented!");
 }
-static int _con_listen(Connection &self, const char *host, uint16_t port){
+int Node::listen(const char *host, uint16_t port){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }
-static void _con_peg(Connection &self, Connection *other){
+void Node::peg(Node *other){
 	ERROR("CON_bridge not implemented!");
 }
 
-static void _con_close(Connection &self){
+void Node::close(){
 	ERROR("CONNECTION: close() has to be implemented!");
 }
 
-void CON_init(Connection &self){
-	self.ssl = 0;
-	self.ctx = 0;
-	self._output = 0;
-	self._input = 0;
-	self.type = NODE_NONE;
-	
-	/* set up the memory-buffer BIOs */
-	self.read_buf = BIO_new(BIO_s_mem());
-	self.write_buf = BIO_new(BIO_s_mem());
-	BIO_set_mem_eof_return(self.read_buf, -1);
-	BIO_set_mem_eof_return(self.write_buf, -1);
-	
-	self.in_read = BIO_new(BIO_s_mem());
-	self.in_write = BIO_new(BIO_s_mem());
-	BIO_set_mem_eof_return(self.in_read, -1);
-	BIO_set_mem_eof_return(self.in_write, -1);
-	
-	self.connect = _con_connect;
-	self.send = _con_send;
-	self.recv = _con_recv;
-	self.sendCommand = _con_send_command;
-	self.recvCommand = _con_recv_command;
-	self.listen = _con_listen;
-	self.accept = _con_accept;
-	self.run = _con_run;
-	self.peg = _con_peg;
-	self.close = _con_close;
-	
-	self.state = CON_STATE_INITIALIZED;
+
+Node *Node::createNode(const char *name){
+	if(strcmp(name, "peer")== 0){
+		return new VSLNode(0);
+	}
+	else if(strcmp(name, "tcp")==0){
+		return new TCPNode();
+	}
+	else if(strcmp(name, "udt")==0){
+		return new UDTNode();
+	}
+	else if(strcmp(name, "ssl")==0){
+		return new SSLNode();
+	}
+	else{
+		ERROR("Unknown socket type '"<<name<<"'");
+	}
+	return 0;
 }
 
-void CON_shutdown(Connection &self){
-	LOG("[connection] closing "<<self.host<<":"<<self.port);
+Node::Node(){
+	this->_output = 0;
+	this->_input = 0;
+	this->type = NODE_NONE;
 	
-	if(self.close)
-		self.close(self);
-		
-	if(self.ssl){
-		SSL_shutdown(self.ssl);
-		SSL_free(self.ssl);
-		if(self.ctx)
-			SSL_CTX_free(self.ctx);
+	/* set up the memory-buffer BIOs */
+	this->read_buf = BIO_new(BIO_s_mem());
+	this->write_buf = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->read_buf, -1);
+	BIO_set_mem_eof_return(this->write_buf, -1);
+	
+	this->in_read = BIO_new(BIO_s_mem());
+	this->in_write = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->in_read, -1);
+	BIO_set_mem_eof_return(this->in_write, -1);
+	
+	this->state = CON_STATE_INITIALIZED;
+}
+
+Node::~Node(){
+	LOG("[connection] closing "<<this->host<<":"<<this->port);
+	
+	if(this->_output){
+		this->_output->_input = 0;
+		//NET_free(this->_output);
 	}
-	if(self._output){
-		self._output->_input = 0;
-		//NET_free(self._output);
-	}
-	if(self._input){
-		self._input->_output = 0;
-		//NET_free(self._input);
+	if(this->_input){
+		this->_input->_output = 0;
+		//NET_free(this->_input);
 	}
 	
-	if(self.socket)
-		close(self.socket);
+	if(this->socket)
+		::close(this->socket);
 	
-	self.ssl = 0;
-	self.ctx = 0;
-	self._output = 0;
-	self._input = 0;
-	self.socket = 0;
+	this->_output = 0;
+	this->_input = 0;
+	this->socket = 0;
 	
-	self.state = CON_STATE_UNINITIALIZED;
+	this->state = CON_STATE_UNINITIALIZED;
 }

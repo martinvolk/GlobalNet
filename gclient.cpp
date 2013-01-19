@@ -30,25 +30,26 @@ void SRV_shutdown(Service &self){
 	
 }
 
-VSL::VSOCKET SRV_accept(Service &self){
+/*
+VSL::VSOCKET Service::accept(){
 	VSL::VSOCKET con = 0;
-	if((con = VSL::accept(self.socket))>0){
-		for(uint c=0;c<ARRSIZE(self.clients);c++){
-			if(c == ARRSIZE(self.clients)-1){
+	if((con = VSL::accept(this->socket))>0){
+		for(uint c=0;c<ARRSIZE(this->clients);c++){
+			if(c == ARRSIZE(this->clients)-1){
 				ERROR("No more free service sockets available!");
 				return 0;
 			}
-			if(self.clients[c] == 0){
-				self.clients[c] = con;
+			if(this->clients[c] == 0){
+				this->clients[c] = con;
 				return con;
 			}
 		}
 	}
 	return con;
 }
-
-Service socks;
-Service console;
+*/
+Service *socks;
+Service *console;
 
 void signal_handler(int sig){
 	LOG("SHUTTING DOWN!");
@@ -126,13 +127,16 @@ int main(int argc, char* argv[])
 		port = atoi(options[SOCKS_PORT].first()->arg);
 	}
 	// start the socks service
-	SRV_initSOCKS(socks);
-	socks.listen(socks, "localhost", port);
+	Service *socks = new SocksService();
+	Service *console = new ConsoleService(); 
 	
-	SRV_initCONSOLE(console);
+	socks->listen("localhost", port);
+	
 	// start the console service
 	if(options[CONSOLE_PORT].count() > 0){
-		console.listen(console, "localhost", atoi(options[CONSOLE_PORT].first()->arg));
+		console->listen("localhost", atoi(options[CONSOLE_PORT].first()->arg));
+	} else {
+		console->listen("localhost", 2000);
 	}
 	
 	unsigned long usec = 0;
@@ -142,11 +146,14 @@ int main(int argc, char* argv[])
 			fflush(stdout);
 		usec++;
 		// run main loop 
-		socks.run(socks);
-		console.run(console);
+		socks->run();
+		console->run();
 		VSL::run();
 		usleep(100); // about 100fps
 	}
+	
+	delete socks;
+	delete console;
 	
 	VSL::shutdown();
 	

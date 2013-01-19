@@ -20,7 +20,7 @@ static int socket_writable(int socket){
 	return select(1, 0, &fdset, 0, &tv);
 }*/
 
-static int _tcp_connect(Connection &self, const char *host, uint16_t port){
+int TCPNode::connect(const char *host, uint16_t port){
 	struct sockaddr_in server;
 	struct hostent *hp;
 	int s;
@@ -34,46 +34,45 @@ static int _tcp_connect(Connection &self, const char *host, uint16_t port){
 	//server.sin_len = sizeof(server);
 	server.sin_family = AF_INET;
 	server.sin_port = htons(port);
-	s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	s = ::socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s < 0) {
 		perror("socket");
 		return 0;
 	}
 	
-	connect(s, (struct sockaddr *)&server, sizeof(server));
+	::connect(s, (struct sockaddr *)&server, sizeof(server));
 	
 	int val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	self.host = inet_get_host_ip(host);
-	self.port = port;
+	this->host = inet_get_host_ip(host);
+	this->port = port;
 		
-	self.socket = s;
+	this->socket = s;
 	
 	// we set the state right away to established because the connect
 	// call is blocking
-	self.state = CON_STATE_ESTABLISHED;
+	this->state = CON_STATE_ESTABLISHED;
 	
 	return s;
 }
 
-static Connection *_tcp_accept(Connection &self){
+Node *TCPNode::accept(){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
 	char clientservice[32];
 	
 	int z;
-	Connection *con = 0;
+	Node *con = 0;
 	
-	if(!(self.state & CON_STATE_LISTENING)){
+	if(!(this->state & CON_STATE_LISTENING)){
 		return 0;
 	}
-	if((z = accept4(self.socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
+	if((z = accept4(this->socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		LOG("[server socket] client connected!");
 		
-		con = NET_allocConnection(*self.net);
-		CON_initTCP(*con);
-		//NET_createConnection(self.net, "tcp", false);
+		con = new TCPNode();
+		//NET_createConnection(this->net, "tcp", false);
 		
 		char host[NI_MAXHOST];
 		getnameinfo((sockaddr *)&adr_clnt, len_inet, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
@@ -91,7 +90,7 @@ static Connection *_tcp_accept(Connection &self){
 	return con;
 }
 
-static int _tcp_listen(Connection &self, const char *host, uint16_t port){
+int TCPNode::listen(const char *host, uint16_t port){
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -100,7 +99,7 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	int optval;
 	string str;
 	
-	s = socket(AF_INET,SOCK_STREAM,0);  
+	s = ::socket(AF_INET,SOCK_STREAM,0);  
 	if ( s == -1 )  {
 		SOCK_ERROR("socket()"); 
 		goto close;
@@ -115,7 +114,7 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	adr_srvr.sin_addr.s_addr = INADDR_ANY;
 	adr_srvr.sin_port = htons(port);
 
-	z = bind(s,(struct sockaddr *)&adr_srvr,  len_inet);  
+	z = ::bind(s,(struct sockaddr *)&adr_srvr,  len_inet);  
 	if ( z == -1 )  {
 		SOCK_ERROR("bind(2)"); 
 		goto close;
@@ -124,7 +123,7 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	/* 
 	* Set listen mode  
 	*/  
-	if ( listen(s, 10) == -1 ) {
+	if ( ::listen(s, 10) == -1 ) {
 		SOCK_ERROR("listen(2)");  
 		goto close;
 	}
@@ -137,53 +136,53 @@ static int _tcp_listen(Connection &self, const char *host, uint16_t port){
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	self.host = inet_get_host_ip(host);
-	self.port = port;
+	this->host = inet_get_host_ip(host);
+	this->port = port;
 	
-	self.state = CON_STATE_LISTENING;
-	self.socket = s;
+	this->state = CON_STATE_LISTENING;
+	this->socket = s;
 	return 1;
 
 close:
-	close(s);
+	::close(s);
 	return 0;
 }
 
-static int _tcp_recv(Connection &self, char *data, size_t size){
-	return BIO_read(self.read_buf, data, size);
+int TCPNode::recv(char *data, size_t size){
+	return BIO_read(this->read_buf, data, size);
 }
 
-static int _tcp_send(Connection &self, const char *data, size_t size){
-	return BIO_write(self.write_buf, data, size);
+int TCPNode::send(const char *data, size_t size){
+	return BIO_write(this->write_buf, data, size);
 }
 
-static void _tcp_run(Connection &self){
+void TCPNode::run(){
 	Packet pack;
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	/*
-	if(self.state & CON_STATE_CONNECTING && socket_writable(self.socket)>0){
-		self.state = CON_STATE_ESTABLISHED;
+	if(this->state & CON_STATE_CONNECTING && socket_writable(this->socket)>0){
+		this->state = CON_STATE_ESTABLISHED;
 	
-		LOG("[tcp] connected to "<<self.host<<":"<<self.port);
+		LOG("[tcp] connected to "<<this->host<<":"<<this->port);
 	}*/
-	if(self.state & CON_STATE_CONNECTED){
+	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
-		while(!BIO_eof(self.write_buf)){
-			if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				LOG("TCP: sending "<<rc<<" bytes of data to "<<self.host<<":"<<self.port);
-				if((rc = send(self.socket, tmp, rc, MSG_NOSIGNAL))<0){
+		while(!BIO_eof(this->write_buf)){
+			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+				LOG("TCP: sending "<<rc<<" bytes of data to "<<this->host<<":"<<this->port);
+				if((rc = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))<0){
 					perror("TCP send");
 				}
 			}
 		}
-		if((rc = recv(self.socket, tmp, sizeof(tmp), 0))>0){
+		if((rc = ::recv(this->socket, tmp, sizeof(tmp), 0))>0){
 			LOG("TCP: received "<<rc<<" bytes of data!");
-			BIO_write(self.read_buf, tmp, rc);
+			BIO_write(this->read_buf, tmp, rc);
 		} else if(rc == 0){
 			LOG("TCP: disconnected");
-			close(self.socket);
-			self.state = CON_STATE_DISCONNECTED;
+			::close(this->socket);
+			this->state = CON_STATE_DISCONNECTED;
 		}
 		else if(errno != ENOTCONN && errno != EWOULDBLOCK){
 			//perror("recv");
@@ -191,37 +190,29 @@ static void _tcp_run(Connection &self){
 	}
 }
 
-static void _tcp_peg(Connection &self, Connection *other){
+void TCPNode::peg(Node *other){
 	ERROR("TCP is an output node! it can not be pegged.");
 }
 
-static void _tcp_close(Connection &self){
+void TCPNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	while(!BIO_eof(self.write_buf)){
-		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			send(self.socket, tmp, rc, MSG_NOSIGNAL);
+	while(!BIO_eof(this->write_buf)){
+		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			::send(this->socket, tmp, rc, MSG_NOSIGNAL);
 		}
 	}
-	close(self.socket);
+	::close(this->socket);
 	LOG("TCP: disconnected!");
-	self.state = CON_STATE_DISCONNECTED;
+	this->state = CON_STATE_DISCONNECTED;
 }
 
-int CON_initTCP(Connection &self){
-	CON_init(self);
-	
-	self.type = NODE_TCP;
-	
-	self.connect = _tcp_connect;
-	self.accept = _tcp_accept;
-	self.send = _tcp_send;
-	self.recv = _tcp_recv;
-	self.listen = _tcp_listen;
-	self.run  = _tcp_run;
-	self.peg = _tcp_peg;
-	self.close = _tcp_close;
-	
-	return 1;
+TCPNode::TCPNode(){
+	this->type = NODE_TCP;
+}
+
+TCPNode::~TCPNode(){
+	if(_output)
+		delete _output;
 }

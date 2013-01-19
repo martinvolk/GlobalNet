@@ -13,13 +13,13 @@ Implementation of a normal UDT connection. Does not support any commands or pack
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Connection *_udt_accept(Connection &self){
+Node *UDTNode::accept(){
 	UDTSOCKET recver;
 	sockaddr_storage clientaddr;
 	int addrlen = sizeof(clientaddr);
 	
 	/// accept connections on the server socket 
-	if(UDT::ERROR != (recver = UDT::accept(self.socket, (sockaddr*)&clientaddr, &addrlen))){
+	if(UDT::ERROR != (recver = UDT::accept(this->socket, (sockaddr*)&clientaddr, &addrlen))){
 		LOG("[udt] accepted incoming connection!");
 		if(recver == UDT::INVALID_SOCK)
 		{
@@ -27,11 +27,9 @@ Connection *_udt_accept(Connection &self){
 			 return 0;
 		}
 		
-		Connection *conn = NET_allocConnection(*self.net);
+		Node *conn = new UDTNode();
 		char clientservice[NI_MAXSERV];
 		char host[NI_MAXHOST];
-		
-		CON_initUDT(*conn);
 		
 		getnameinfo((sockaddr *)&clientaddr, addrlen, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
 		conn->host = host;
@@ -46,7 +44,7 @@ Connection *_udt_accept(Connection &self){
 	return 0;
 }
 
-static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
+int UDTNode::connect(const char *hostname, uint16_t port){
 	struct addrinfo hints, *local, *peer;
 	
 	
@@ -112,52 +110,52 @@ static int _udt_connect(Connection &self, const char *hostname, uint16_t port){
 	
 	LOG("[udt] connected to "<<hostname<<":"<<port);
 	
-	self.socket = client; 
-	self.host = inet_get_host_ip(hostname);
-	self.port = port;
+	this->socket = client; 
+	this->host = inet_get_host_ip(hostname);
+	this->port = port;
 	
-	self.state = CON_STATE_ESTABLISHED;
+	this->state = CON_STATE_ESTABLISHED;
 	return 1;
 }
 
-static int _udt_send(Connection &self, const char *data, size_t size){
-	return BIO_write(self.write_buf, data, size);
+int UDTNode::send(const char *data, size_t size){
+	return BIO_write(this->write_buf, data, size);
 }
-static int _udt_recv(Connection &self, char *data, size_t size){
-	return BIO_read(self.read_buf, data, size);
+int UDTNode::recv(char *data, size_t size){
+	return BIO_read(this->read_buf, data, size);
 }
 
-static void _udt_run(Connection &self){
+void UDTNode::run(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	if(!(self.state & CON_STATE_CONNECTED)){
-		//BIO_clear(self.write_buf);
-		//BIO_clear(self.read_buf);
+	if(!(this->state & CON_STATE_CONNECTED)){
+		//BIO_clear(this->write_buf);
+		//BIO_clear(this->read_buf);
 		return;
 	}
 	
-	if(self.state & CON_STATE_CONNECTED){
+	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
-		while(!BIO_eof(self.write_buf)){
-			if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+		while(!BIO_eof(this->write_buf)){
+			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
 				//LOG("UDT: sending "<<rc<<" bytes of data!");
-				UDT::send(self.socket, tmp, rc, 0);
+				UDT::send(this->socket, tmp, rc, 0);
 			}
 		}
-		if((rc = UDT::recv(self.socket, tmp, sizeof(tmp), 0))>0){
+		if((rc = UDT::recv(this->socket, tmp, sizeof(tmp), 0))>0){
 			//LOG("UDT: received "<<rc<<" bytes of data!");
-			BIO_write(self.read_buf, tmp, rc);
+			BIO_write(this->read_buf, tmp, rc);
 		}
 		// if disconnected
-		if(UDT::getsockstate(self.socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
-			LOG("UDT: " << (&self) << " "<<self.host<<":"<<self.port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
-			//UDT::close(self.socket);
-			self.state = CON_STATE_DISCONNECTED;
+		if(UDT::getsockstate(this->socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
+			LOG("UDT: "<<this->host<<":"<<this->port<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
+			//UDT::close(this->socket);
+			this->state = CON_STATE_DISCONNECTED;
 		}
 	}
 }
-int _udt_listen(Connection &self, const char *host, uint16_t port){
+int UDTNode::listen(const char *host, uint16_t port){
 	addrinfo hints;
 	addrinfo* res;
 
@@ -202,44 +200,36 @@ int _udt_listen(Connection &self, const char *host, uint16_t port){
 	
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
-	self.host = inet_get_host_ip(host);
-	self.state = CON_STATE_LISTENING;
-	self.port = port;
-	self.socket = socket;
+	this->host = inet_get_host_ip(host);
+	this->state = CON_STATE_LISTENING;
+	this->port = port;
+	this->socket = socket;
 	
 	return 1;
 }
-void _udt_peg(Connection &self, Connection *other){
+
+void UDTNode::peg(Node *other){
 	ERROR("UDT is an ouput node. It can not be pegged!");
 }
 
-void _udt_close(Connection &self){
+void UDTNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	while(!BIO_eof(self.write_buf)){
-		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			UDT::send(self.socket, tmp, rc, 0);
+	while(!BIO_eof(this->write_buf)){
+		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			UDT::send(this->socket, tmp, rc, 0);
 		}
 	}
 	LOG("UDT: disconnected!");
-	UDT::close(self.socket);
-	self.state = CON_STATE_DISCONNECTED;
+	UDT::close(this->socket);
+	this->state = CON_STATE_DISCONNECTED;
 }
 
-int CON_initUDT(Connection &self){
-	CON_init(self);
-	
-	self.type = NODE_UDT;
-	
-	self.connect = _udt_connect;
-	self.send = _udt_send;
-	self.recv = _udt_recv;
-	self.listen = _udt_listen;
-	self.accept = _udt_accept;
-	self.run = _udt_run;
-	self.peg = _udt_peg;
-	self.close = _udt_close;
-	
-	return 1;
+UDTNode::UDTNode(){
+	this->type = NODE_UDT;
+}
+
+UDTNode::~UDTNode(){
+	this->close();
 }

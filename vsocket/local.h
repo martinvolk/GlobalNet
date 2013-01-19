@@ -47,6 +47,7 @@ Free software. Part of the GlobalNet project.
 
 /// boost
 //#include <boost/shared_ptr.hpp>
+//#include <boost/thread.hpp>
 
 #include <udt.h>
 #include <math.h>
@@ -179,7 +180,7 @@ typedef enum {
 	
 	CMD_REG_LINK, /// register a link on the other peer
 	CMD_UNREG_LINK, /// unregister a link 
-}ConnectionMessage;
+}NodeMessage;
 
 typedef enum{
 	CON_STATE_UNINITIALIZED		= 0,
@@ -214,15 +215,13 @@ typedef int UDPSocket;
 
 struct Network;
     
-// peer to peer connection
-struct Connection{
-	bool initialized;
+// a connection node
+class Node{
+public:
+	Node();
+	~Node();
+	
 	NodeType type;
-	
-	Network *net;
-	
-	SSL_CTX *ctx;
-	SSL *ssl; // ssl context for the connection
 	
 	/// input read write buffers
 	BIO *in_read;
@@ -243,29 +242,134 @@ struct Connection{
 	ConnectionState state;
 	
 	// bridging information
-	Connection *_output; 
-	Connection *_input;
+	Node *_output; 
+	Node *_input;
 	
 	// this is where the received data will be stored until it can be 
 	// validated and converted into a packet that goes into packet_in
 	vector<char> _recv_buf; 
 	deque<Packet> _recv_packs;
 	  
-	void 	*data_ptr;
+	static Node *createNode(const char *name);
 	
 	// virtual functions
-	int (*connect)(Connection &self, const char *host, uint16_t port);
-	int (*send)(Connection &self, const char *data, size_t size);
-	int (*recv)(Connection &self, char *data, size_t size);
-	int (*sendCommand)(Connection &self, ConnectionMessage cmd, const char *data, size_t size);
-	int (*recvCommand)(Connection &self, Packet *pack);
-	int (*listen)(Connection &self, const char *host, uint16_t port);
-	Connection* (*accept)(Connection &self);
-	void (*run)(Connection &self);
-	void (*peg)(Connection &self, Connection *other);
-	void (*close)(Connection &self);
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	virtual void peg(Node *other);
+	virtual void close();
 }; 
 
+class VSLNode : public Node{
+public:
+	VSLNode(Node *next);
+	~VSLNode();
+	
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	virtual void peg(Node *other);
+	virtual void close();
+	
+private:
+	void _handle_packet(const Packet &packet);
+};
+
+class SSLNode : public Node{
+public:
+	SSLNode();
+	~SSLNode();
+	
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	//virtual void peg(Node *other);
+	virtual void close();
+private: 
+	void _init_ssl_socket(bool server_socket);
+	SSL_CTX *ctx;
+	SSL *ssl; 
+};
+
+class TCPNode : public Node{
+public:
+	TCPNode();
+	~TCPNode();
+
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	virtual void peg(Node *other);
+	virtual void close();
+};
+
+class UDTNode : public Node{
+public:
+	UDTNode();
+	~UDTNode();
+	
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	virtual void peg(Node *other);
+	virtual void close();
+};
+
+class BridgeNode : public Node{
+public:
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	//virtual void peg(Node *other);
+	virtual void close();
+};
+
+class LinkNode : public Node{
+public:
+	LinkNode();
+	~LinkNode();
+	
+	virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t size);
+	virtual int recv(char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	virtual void peg(Node *other);
+	virtual void close();
+};
 
 struct PacketHeader{
 	uint16_t code;
@@ -274,12 +378,19 @@ struct PacketHeader{
 }; 
 
 
-struct Packet{
+class Packet{
+public:
+	class Header{
+		uint16_t code;
+		uint16_t source_command;
+		uint16_t size;
+	};
+
 	PacketHeader cmd;
 	char data[MAX_PACKET_SIZE];
 	
 	// private data
-	Connection *source;
+	Node *source;
 	
 	Packet(){
 		cmd.code = -1;
@@ -306,136 +417,113 @@ struct Packet{
 struct Network;
 /* a link is an implementation of the routing protocol */ 
 /** Writing to a link writes data to the connection */
-struct Link{
+class Link{
+public:
 	bool initialized;
 	//SHA1Hash address; // sha1 hash of the public key 
 	// intermediate peers involved in routing the link (chained connection)
-	Connection *nodes[MAX_LINK_NODES]; 
-	uint length;
+	vector<Node*> nodes; 
 	
 	Network *net; // parent network
 };
 
-struct Service{
-	bool initialized;
-	
-	SHA1Hash address; // the global address of the service 
-	
-	ConnectionState state;
-	
-	// on server side
-	Connection *clients[MAX_SOCKETS]; // client sockets
-	Link *links[MAX_LINKS];
-	
-	// on client side 
-	Link *server_link;  // link through which we can reach the other end
-	int local_socket; // socket of the local connections
-	vector< pair<int, Connection*> > local_clients;
-	map<string, void*> _cache;
-	
-	Connection *socket;
-	Network *net; 
-	
-	void *data; 
-	
-	int (*listen)(Service &self, const char *host, uint16_t port);
-	void (*run)(Service &self);
-};
-
-struct Peer{
-	bool initialized;
-	Connection *socket;
+class Peer{
+public:
+	Peer(VSLNode *socket){
+		this->socket = socket;
+	}
+	~Peer(){
+		if(this->socket) delete socket;
+	}
+	VSLNode *socket;
 	string listen_port;
 	
 	time_t last_peer_list_submit; 
 };
 
-/** this structure holds public inforamtion that is available about the router. 
-most of this information can be double checked, so no reason to spoof it. 
-**/
-struct RouterInfo{
-	// actual interface address on which the router is listening. 
-	sockaddr_in address;
-	
-	// ports that the router supports listening for incoming connections on. 
-	uint16_t listen_start_port;
-	uint16_t listen_interval; // number of ports from the start port. 
-}; 
-
-
-struct PeerRecord{
-	string hub_ip;
-	int hub_port;
-	string peer_ip;
-	int peer_port;
-	time_t last_update; 
-	bool is_local;
-	
-	PeerRecord(){
-		hub_ip = "0.0.0.0";
-		peer_ip = "0.0.0.0";
-		hub_port = peer_port = 0;
-		last_update = 0;
-	}
-	PeerRecord(const PeerRecord &other){
-		this->hub_ip = other.hub_ip;
-		this->hub_port = other.hub_port;
-		this->peer_ip = other.peer_ip;
-		this->peer_port = other.peer_port;
-		this->last_update = other.last_update;
-		this->is_local = other.is_local;
-	}
-	
-	SHA1Hash hash() const{
-		SHA1Hash ret;
-		stringstream ss;
-		ss<<hub_ip<<hub_port<<peer_ip<<peer_port; 
-		ret.from_string(ss.str());
-		return ret;
-	}
-  bool operator<(const PeerRecord &other) const {
-		return this->hash().hex().compare(other.hash().hex()) < 0;
-	}
-};
-
 class PeerDatabase{
 public:
-	void insert(const PeerRecord &data);
-	void update(const PeerRecord &data);
-	vector<PeerRecord> random(unsigned int count);
-	void purge();
+	struct Record{
+		string hub_ip;
+		int hub_port;
+		string peer_ip;
+		int peer_port;
+		time_t last_update; 
+		bool is_local;
+		
+		Record(){
+			hub_ip = "0.0.0.0";
+			peer_ip = "0.0.0.0";
+			hub_port = peer_port = 0;
+			last_update = 0;
+		}
+		Record(const Record &other){
+			this->hub_ip = other.hub_ip;
+			this->hub_port = other.hub_port;
+			this->peer_ip = other.peer_ip;
+			this->peer_port = other.peer_port;
+			this->last_update = other.last_update;
+			this->is_local = other.is_local;
+		}
+		Record &operator=(const Record &other){
+			hub_ip = other.hub_ip;
+			hub_port = other.hub_port;
+			peer_port = other.peer_port;
+			peer_ip = other.peer_ip;
+			last_update = other.last_update;
+			is_local = other.is_local;
+			return *this;
+		}
+		SHA1Hash hash() const{
+			SHA1Hash ret;
+			stringstream ss;
+			ss<<hub_ip<<hub_port<<peer_ip<<peer_port; 
+			ret.from_string(ss.str());
+			return ret;
+		}
+		bool operator<(const Record &other) const {
+			return this->hash().hex().compare(other.hash().hex()) < 0;
+		}
+	};
+
+	PeerDatabase(); 
+	~PeerDatabase();
 	
-	map<string, PeerRecord> db;
+	void insert(const Record &data);
+	void update(const Record &data);
+	vector<Record> random(unsigned int count);
+	void loop();
+private: 
+	bool running;
+	pthread_t worker;
+	pthread_mutex_t mu;
+	map<string, Record> db;
 };
 
-struct Network{
-	Connection *server; 
-	Connection sockets[MAX_SOCKETS];
-	Link links[MAX_LINKS];
-	Service services[MAX_SERVERS];
-	Peer peers[MAX_PEERS];
+class Network{
+public:
+	Network();
+	~Network();
+	
+	Peer* getRandomPeer();
+	LinkNode *createLink(const string &path);
+	LinkNode *createTunnel(const string &host, uint16_t port);
+	LinkNode *createCircuit(unsigned int length = 3);
+	void run();
+	
+	VSLNode *server; 
+	vector<Node*> sockets;
+	vector<Link*> links;
+	list<Peer*> peers;
+	
+	//Peer *createPeer();
 	
 	PeerDatabase peer_db;
+private:
+	void _handle_command(Node *source, const Packet &pack);
 };
 
-struct Application{
-	Network net;
-};
-
-void SRV_initSOCKS(Service &self);
-void SRV_initCONSOLE(Service &self);
-Connection *SRV_accept(Service &self);
-
-int CON_initPeer(Connection &self, Connection *output = 0);
-int CON_initSSL(Connection &self);
-int CON_initTCP(Connection &self);
-void CON_initLINK(Connection &self);
-int CON_initUDT(Connection &self);
-void CON_initBRIDGE(Connection &self);
-void CON_init(Connection &self);
-void CON_shutdown(Connection &self);
-
-int NET_init(Network &self);
+/*
 Connection *NET_connect(Network &self, const char *hostname, int port);
 int NET_run(Network &self);
 void NET_shutdown(Network &self);
@@ -447,7 +535,8 @@ Connection *NET_createTunnel(Network &self, const string &host, uint16_t port);
 Service *NET_createService(Network &self, const char *name);
 
 Service &self_createService(Network &self, const char *name);
-Connection &self_createConnection(Network &self, const char *name, bool client);
+_createConnection(Network &self, const char *name, bool client);
+*/
 
 bool inet_ip_is_local(const string &ip);
 string inet_get_host_ip(const string &hostname);

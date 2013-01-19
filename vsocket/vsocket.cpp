@@ -39,16 +39,16 @@ string con_state_to_string(ConnectionState state){
 
 
 namespace VSL{
-	static Network net;
-	static map<VSL::VSOCKET, Connection*> sockets;
+	static Network *net;
+	static map<VSL::VSOCKET, Node*> sockets;
 	
 	int init(){
-		NET_init(net);
+		net = new Network();
 		return 1;
 	}
 	
-	static Connection* _find_socket(VSOCKET socket){
-		map<VSOCKET, Connection*>::iterator it = sockets.find(socket);
+	static Node* _find_socket(VSOCKET socket){
+		map<VSOCKET, Node*>::iterator it = sockets.find(socket);
 		if(it != sockets.end()){
 			return (*it).second;
 		}
@@ -83,7 +83,7 @@ namespace VSL{
 		if(type == VSL::SOCKET_TCP) type_str = "tcp";
 		else ERROR("TYPE NOT IMPLEMENTED!");
 		
-		Connection *con = NET_createConnection(net, type_str);
+		Node *con = Node::createNode(type_str);
 		VSOCKET sock = _create_socket();
 		sockets[sock] = con;
 		return sock;
@@ -107,11 +107,11 @@ namespace VSL{
 		
 		LOG("tunnel: creating tunnel to peer: "<<tmp.str()<<", then to: "<<host<<":"<<port);
 		
-		Connection *tun = NET_createLink(net, tmp.str().c_str());
+		Node *tun = net->createLink(tmp.str().c_str());
 		if(tun){
 			stringstream ss;
 			ss<<"tcp:"<<host<<":"<<port;
-			tun->connect(*tun, ss.str().c_str(), 0);
+			tun->connect(ss.str().c_str(), 0);
 			
 			VSOCKET sock = _create_socket();
 			sockets[sock] = tun;
@@ -122,9 +122,9 @@ namespace VSL{
 	}
 	
 	VSL::VSOCKET accept(VSL::VSOCKET socket){
-		Connection *con = _find_socket(socket);
+		Node *con = _find_socket(socket);
 		if(con){
-			Connection *client = con->accept(*con);
+			Node *client = con->accept();
 			if(client){
 				VSOCKET s = _create_socket();
 				sockets[s] = client; 
@@ -139,20 +139,22 @@ namespace VSL{
 		string host;
 		int port;
 		if(_parse_host_port(host_port, &host, &port)){
-			NET_connect(net, host.c_str(), port);
+			ERROR("ADD_PEER NOT IMPLEMENTED!");
+			//Peer *node = net->createPeer();
+			//node->socket->connect(host.c_str(), port);
 			return 1;
 		}
 		return -1;
 	}
 	
 	int connect(VSOCKET socket, const char *host_port){
-		Connection *con = _find_socket(socket);
+		Node *con = _find_socket(socket);
 		if(con){
 			string host;
 			int port;
 			
 			if(_parse_host_port(host_port, &host, &port)){
-				con->connect(*con, host.c_str(), port);
+				con->connect(host.c_str(), port);
 				return 1;
 			}
 		}
@@ -160,41 +162,41 @@ namespace VSL{
 	}
 	
 	int listen(VSOCKET socket, const char *host_port){
-		Connection *con = _find_socket(socket);
+		Node *con = _find_socket(socket);
 		
 		if(con){
 			string host;
 			int port;
 			if(_parse_host_port(host_port, &host, &port))
-				return con->listen(*con, host.c_str(), port); 
+				return con->listen(host.c_str(), port); 
 		}
 		return -1;
 	}
 	
 	int send(VSOCKET socket, const char *data, size_t size){
-		Connection *con = _find_socket(socket);
+		Node *con = _find_socket(socket);
 		if(con){
-			return con->send(*con, data, size);
+			return con->send(data, size);
 		}
 		return -1;
 	}
 	
 	int recv(VSOCKET socket, char *data, size_t size){
-		Connection *con = _find_socket(socket);
+		Node *con = _find_socket(socket);
 		if(con){
-			return con->recv(*con, data, size);
+			return con->recv(data, size);
 		}
 		return -1;
 	}
 	
 	void run(){
-		NET_run(net);
+		net->run();
 	}
 	
 	int close(VSOCKET sock){
-		map<VSOCKET, Connection*>::iterator it = sockets.find(sock);
+		map<VSOCKET, Node*>::iterator it = sockets.find(sock);
 		if(it != sockets.end()){
-			(*it).second->close(*(*it).second);
+			delete (*it).second;
 			sockets.erase(it);
 			return 1;
 		}
@@ -202,23 +204,16 @@ namespace VSL{
 	}
 	
 	void shutdown(){
-		NET_shutdown(net);
+		delete net;
 	}
 	
 	void print_stats(int socket){
 		uint nc = 0, nl = 0, np = 0;
-		for(uint j = 0;j<ARRSIZE(net.sockets);j++){
-			Connection *sock = &net.sockets[j];
+		/*for(uint j = 0;j<net->sockets.size();j++){
+			Node *sock = net->sockets[j];
 			if(sock->initialized){
 				nc++;
 				SEND_SOCK(socket, "socket: type: " << sock->type << ": " << sock->host << ":"<<sock->port<<" state: "<<con_state_to_string(sock->state));
-			}
-		}
-		for(uint j = 0;j<ARRSIZE(net.links);j++){
-			Link *link = &net.links[j];
-			if(link->initialized){
-				nl++;
-				//SEND_SOCK(*c, "socket: " << (*x)->host << ":"<<(*x)->port<<" state: "<<con_state_to_string((*x)->state));
 			}
 		}
 		for(uint j = 0;j<ARRSIZE(net.peers);j++){
@@ -227,6 +222,6 @@ namespace VSL{
 				np++;
 				SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
 			}
-		}
+		}*/
 	}
 }
