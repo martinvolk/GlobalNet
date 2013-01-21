@@ -8,7 +8,7 @@ Free software. Part of the GlobalNet project.
 #ifndef _GCLIENT_H_
 #define _GCLIENT_H_ 
 
-//#define DEBUG
+#define DEBUG
 
 #include <string>
 #ifndef WIN32
