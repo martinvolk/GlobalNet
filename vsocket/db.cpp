@@ -81,6 +81,9 @@ PeerDatabase::~PeerDatabase(){
 void PeerDatabase::insert(const Record &_data){
 	LOCK(mu,0);
 	
+	if(blocked.find(_data.peer.ip) != blocked.end())
+		return;
+		
 	Record data = _data;
 	if(data.peer.ip.compare("") == 0){
 		LOG("PDB: skipping peer: ip is null");

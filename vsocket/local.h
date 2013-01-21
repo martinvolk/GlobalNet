@@ -523,6 +523,7 @@ public:
 	PeerDatabase(); 
 	~PeerDatabase();
 	
+	void blacklist(const string &ip) { blocked.insert(ip); }
 	void insert(const Record &data);
 	void update(const Record &data);
 	vector<Record> random(unsigned int count, bool include_nat_peers = false);
@@ -538,6 +539,7 @@ private:
 	map<string, Record> quarantine; 
 	map<string, Record> db;
 	map<string, Record> offline; 
+	set<string> blocked;
 };
 
 class Network{

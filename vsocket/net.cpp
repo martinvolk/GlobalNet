@@ -192,7 +192,6 @@ Network::Network(){
 		if(ifs[c].second.compare("127.0.0.1") != 0)
 			listen_adr = ifs[c].second;
 	}
-	
 	// attempt to find an available listen port. 1000 alternatives should be enough
 	for(int port = SERV_LISTEN_PORT; port <= SERV_LISTEN_PORT + 1000; port ++){
 		if(this->server->listen(listen_adr.c_str(), port)){
@@ -203,6 +202,9 @@ Network::Network(){
 			ERROR("ERROR no available listen ports left!");
 		}
 	}
+	
+	// blacklist our own address from local peer database to avoid localhost connections
+	peer_db.blacklist(listen_adr);
 }
 
 
