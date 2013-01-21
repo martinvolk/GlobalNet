@@ -228,7 +228,7 @@ namespace VSL{
 		for(list<Network::Peer*>::iterator it = net->peers.begin();
 				it != net->peers.end(); it++ ){
 			Network::Peer *peer = (*it);
-			SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
+			SEND_SOCK(socket, "peer: " << peer->address.ip << ":"<<peer->address.port<<" is_connected: "<<peer->is_connected());
 			np++;
 		}
 		SEND_SOCK(socket, "Total: "<<np<<" peers.");

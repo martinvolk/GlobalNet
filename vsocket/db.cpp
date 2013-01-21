@@ -7,22 +7,6 @@
 	boost::lock(__lhs_lock, __rhs_lock);\
 */
 
-class _locker{
-	public:
-	_locker(pthread_mutex_t &lock){
-		lk = &lock;
-		pthread_mutex_lock(lk);
-	}
-	~_locker(){
-		pthread_mutex_unlock(lk);
-	}
-	void unlock(){ pthread_mutex_unlock(lk); }
-private: 
-	pthread_mutex_t *lk;
-};
-
-#define LOCK(mu, it) _locker __lk_##mu##it(mu);
-#define UNLOCK(mu, it) __lk_##mu##it.unlock();
 
 static bool _try_connect(const string &host, int port){
 	stringstream ss;

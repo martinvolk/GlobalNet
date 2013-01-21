@@ -187,7 +187,7 @@ Network::Network(){
 	string listen_adr = "127.0.0.1";
 	
 	INFO("Available interfaces:");
-	for(int c =0; c<ifs.size(); c++){
+	for(unsigned int c =0; c<ifs.size(); c++){
 		INFO(ifs[c].first<<": "<<ifs[c].second);
 		if(ifs[c].second.compare("127.0.0.1") != 0)
 			listen_adr = ifs[c].second;
@@ -238,9 +238,9 @@ void Network::run() {
 			peers.erase(it++);
 			continue;
 		}
-		p->run();
+		
 		if(p->is_connected()){
-			if(p->socket->recvCommand(&pack)){
+			if(p->recvCommand(&pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
 				if(pack.cmd.code == CMD_PEER_LIST){
 					LOG("NET: received active peer list "<<string(pack.data)<<", "<<pack.size());
@@ -252,11 +252,6 @@ void Network::run() {
 			if(p->last_peer_list_submit < time(0) - NET_PEER_LIST_INTERVAL){
 				LOG("NET: sending peer list to the peer.");
 				
-				// update the last_update times since we are still connected to this peer. 
-				bool peer_ip_is_local = inet_ip_is_local(p->socket->host);
-				bool peer_listen_address_is_peer_address = true;
-				bool our_listen_ip_is_local = inet_ip_is_local(this->server->host);
-				
 				// update the record of the current peer in the database 
 				PeerDatabase::Record r; 
 				// we add the peer to the database if he has provided a listen address
@@ -267,7 +262,7 @@ void Network::run() {
 				else {
 					// peer does not have a dedicated listening socket. 
 					// we put the peer into database, but supply our own address as relay host
-					r.peer = PeerAddress(p->socket->host, CLIENT_BIND_PORT);
+					r.peer = PeerAddress(p->address.ip, CLIENT_BIND_PORT);
 					r.hub = PeerAddress(this->server->host, this->server->port);
 				}
 				this->peer_db.update(r);
@@ -275,7 +270,7 @@ void Network::run() {
 				// send a peer list to the peer 
 				string peers = peer_db.to_string(25);
 				
-				p->socket->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length());
+				p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length());
 	
 				p->last_peer_list_submit = time(0);
 			}
@@ -287,7 +282,7 @@ void Network::run() {
 	for(list<Peer*>::iterator it = peers.begin(); 
 			it != peers.end();){
 		Peer *p = (*it);
-		if(p->socket->state & CON_STATE_DISCONNECTED){
+		if(p->is_disconnected()){
 			delete p;
 			peers.erase(it++);
 			continue;

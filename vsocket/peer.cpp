@@ -1,11 +1,40 @@
 #include "local.h"
 
-Network::Peer::~Peer(){
-	if(this->socket) delete socket;
+static void *_peer_worker(void *data){
+	Network::Peer *self = (Network::Peer*)data;
+	self->loop();
+	return 0;
 }
 
-void Network::Peer::run(){
-	if(socket) socket->run();
+Network::Peer::Peer(VSLNode *socket){
+	this->socket = socket;
+	pthread_create(&worker, 0, &_peer_worker, this);
+}
+
+Network::Peer::~Peer(){
+	if(this->socket) delete socket;
+	void *ret;
+	pthread_join(this->worker, &ret);
+}
+
+void Network::Peer::loop(){
+	while(socket && socket->state & CON_STATE_CONNECTED) {
+		LOCK(mu, 0);
+		address.ip = socket->host;
+		address.port = socket->port;
+		socket->run();
+		usleep(100);
+	}
+}
+
+int Network::Peer::recvCommand(Packet *dst){
+	LOCK(mu, 0);
+	return socket->recvCommand(dst);
+}
+
+int Network::Peer::sendCommand(NodeMessage msg, const char *data, size_t size){
+	LOCK(mu, 0);
+	return socket->sendCommand(msg, data, size);
 }
 
 /*

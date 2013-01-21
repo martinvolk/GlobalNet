@@ -95,6 +95,23 @@ using namespace std;
 
 #define CONNECTION_TIMEOUT 10000
 
+class _locker{
+	public:
+	_locker(pthread_mutex_t &lock){
+		lk = &lock;
+		pthread_mutex_lock(lk);
+	}
+	~_locker(){
+		pthread_mutex_unlock(lk);
+	}
+	void unlock(){ pthread_mutex_unlock(lk); }
+private: 
+	pthread_mutex_t *lk;
+};
+
+#define LOCK(mu, it) _locker __lk_##mu##it(mu);
+#define UNLOCK(mu, it) __lk_##mu##it.unlock();
+
 class SHA1Hash {
 private: 
 	char hash[20];
@@ -574,20 +591,24 @@ public:
 	
 	class Peer{
 	public:
-		Peer(VSLNode *socket){
-			this->socket = socket;
-		}
+		Peer(VSLNode *socket);
 		~Peer();
-		void run();
+		void loop();
 		void sendPeerList(const vector<PeerDatabase::Record> &peers);
+		int recvCommand(Packet *pack);
+		int sendCommand(NodeMessage msg, const char *data, size_t size);
 		bool is_connected();
 		bool is_disconnected();
-	
-		VSLNode *socket;
+		
+		PeerAddress address;
+		time_t last_peer_list_submit; 
 		PeerAddress listen_addr;
+	private:
+		VSLNode *socket;
 		PeerListener *listener;
 		bool peer_info_received;
-		time_t last_peer_list_submit; 
+		pthread_mutex_t mu;
+		pthread_t worker;
 	};
 	
 	list<Peer*> peers;
