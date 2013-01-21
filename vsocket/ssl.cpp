@@ -126,6 +126,9 @@ Node *SSLNode::accept(){
 			
 			con->_init_ssl_socket(true);
 			
+			con->host = peer.host;
+			con->port = peer.port;
+			
 			con->_output = peer;
 			
 			// the state now needs to be handshake because the connection 

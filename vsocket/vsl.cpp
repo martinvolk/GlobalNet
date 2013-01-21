@@ -48,7 +48,10 @@ Node *VSLNode::accept(){
 			con->state = CON_STATE_CONNECTING;
 		else
 			con->state = CON_STATE_ESTABLISHED;
-			
+		
+		con->host = peer->host;
+		con->port = peer->port;
+		
 		// set the output to newly accepted peer
 		con->_output = peer;
 		
