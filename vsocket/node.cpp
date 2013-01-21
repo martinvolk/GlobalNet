@@ -97,6 +97,22 @@ Node::Node(){
 	this->state = CON_STATE_INITIALIZED;
 }
 
+void Node::set_output(Node *other){
+	if(this->_output) delete _output;
+	this->_output = other;
+	other->set_input(this);
+}
+void Node::set_input(Node *other){ 
+	this->_input = other;
+	other->set_output(this);
+}
+Node* Node::get_output(){
+	return this->_output;
+}
+Node* Node::get_input(){
+	return this->_input;
+}
+	
 Node::~Node(){
 	LOG("NODE: deleting "<<this->host<<":"<<this->port);
 	

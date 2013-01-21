@@ -50,7 +50,6 @@ SocksService::~SocksService(){
 }
 
 void SocksService::put_socket_to_cache(const char *ip, VSL::VSOCKET socket){
-	LOG("SOCKS: cache: putting socket "<<socket<<" into cache for "<<ip<<" ("<<cache.size()<<")");
 	Cache::iterator it = cache.find(string(ip));
 	if(it == cache.end()){
 		map<VSL::VSOCKET, CachePost> m; 

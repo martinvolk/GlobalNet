@@ -145,13 +145,13 @@ LinkNode *Network::createLink(const string &path){
 			port = atoi(tmp[1].c_str());
 		} else if(tmp[0] == "*"){
 			// pick random host from already connected peers (in the future make it pick from "known peers")
-			Peer *peer = this->getRandomPeer();
-			if(!peer){
+			vector<PeerDatabase::Record> random = this->peer_db.random(1);
+			if(!random.size()){
 				ERROR("Link: could not create link! No peers connected!");
 				return 0;
 			}
-			host = peer->socket->host;
-			//port = peer->socket->port;
+			host = random[0].peer.ip;
+			port = random[0].peer.port;
 		} 
 		LOG("[link] establishing intermediate connection to "<<host<<":"<<port);
 		stringstream ss;
@@ -202,94 +202,64 @@ void Network::connect(const char *hostname, int port){
 	peers.push_back(new Peer(node));
 }
 
-void Network::_handle_command(Node *source, const Packet &pack){
-	if(pack.cmd.code == CMD_PEER_LIST){
-		vector<string> fields;
-		LOG("NET: received active peer list "<<string(pack.data)<<", "<<pack.size());
-		tokenize(pack.data, ";", fields);
-		time_t packet_time = atol(fields[0].c_str());
-		for(unsigned int c=1;c<fields.size();c++){
-			vector<string> parts;
-			tokenize(fields[c], ":", parts);
-			if(parts.size() < 4){
-				ERROR("Invalid format for the list of IPs.");
-				return;
-			}
-			PeerDatabase::Record r; 
-			r.hub_ip = parts[0];
-			r.hub_port = atoi(parts[1].c_str());
-			r.peer_ip = parts[2];
-			r.peer_port = atoi(parts[3].c_str()); 
-			r.last_update = time(0) - packet_time + atol(parts[4].c_str());
-			this->peer_db.insert(r);
-			//LOG(r.hub_ip<<":"<<r.hub_port<<";"<<r.peer_ip<<":"<<r.peer_port);
-		}
-	} 
-}
-
 void Network::run() {
 	//this->peer_db.purge();
 	
-	// update our listen record
-	PeerDatabase::Record r; 	
-	r.hub_ip = "";
-	r.hub_port = 0;
-	r.peer_ip = this->server->host;
-	r.peer_port = this->server->port;
-	r.is_local = false;
-	r.last_update = time(0);
+	PeerDatabase::Record r;
+	r.peer.ip = this->server->host;
+	r.peer.port = this->server->port;
+	peer_db.update(r);
 	
-	this->peer_db.insert(r);
-				
 	// monitor peers for replies
 	for(list<Peer*>::iterator it = peers.begin(); 
 			it != peers.end(); ){
 		Peer *p = (*it);
-		Node *s = p->socket;
 		Packet pack;
-		if(!s || s->state & CON_STATE_DISCONNECTED){
+		
+		// remove peers that have disconnected 
+		if(p->is_disconnected()){
 			delete p;
 			peers.erase(it++);
 			continue;
 		}
-		s->run();
-		if(s && s->state & CON_STATE_CONNECTED){
-			if(s->recvCommand(&pack)){
+		p->run();
+		if(p->is_connected()){
+			if(p->socket->recvCommand(&pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
-				this->_handle_command(s, pack);
+				if(pack.cmd.code == CMD_PEER_LIST){
+					LOG("NET: received active peer list "<<string(pack.data)<<", "<<pack.size());
+					
+					peer_db.from_string(string(pack.data));
+				} 
 			}
 			// send some commands if it is time. 
 			if(p->last_peer_list_submit < time(0) - NET_PEER_LIST_INTERVAL){
+				LOG("NET: sending peer list to the peer.");
+				
 				// update the last_update times since we are still connected to this peer. 
 				bool peer_ip_is_local = inet_ip_is_local(p->socket->host);
 				bool peer_listen_address_is_peer_address = true;
 				bool our_listen_ip_is_local = inet_ip_is_local(this->server->host);
+				
+				// update the record of the current peer in the database 
 				PeerDatabase::Record r; 
-				
-				r.hub_ip = this->server->host;
-				r.hub_port = this->server->port;
-				r.peer_ip = p->socket->host;
-				r.peer_port = p->socket->port;
-				r.is_local = peer_ip_is_local;
-				r.last_update = time(0);
-				
-				if(r.peer_ip.compare("") != 0)
-					this->peer_db.insert(r);
+				// we add the peer to the database if he has provided a listen address
+				// the database will automatically check if it's valid later. 
+				if(p->listen_addr.is_valid()){
+					r.peer = p->listen_addr;
+				}
+				else {
+					// peer does not have a dedicated listening socket. 
+					// we put the peer into database, but supply our own address as relay host
+					r.peer = PeerAddress(p->socket->host, CLIENT_BIND_PORT);
+					r.hub = PeerAddress(this->server->host, this->server->port);
+				}
+				this->peer_db.update(r);
 				
 				// send a peer list to the peer 
-				vector<PeerDatabase::Record> rand_set = this->peer_db.random(25);
+				string peers = peer_db.to_string(25);
 				
-				stringstream ss;
-				ss<<time(0);
-				for(size_t c=0;c< rand_set.size();c++){
-					ss<<";"<<rand_set[c].hub_ip<<":"
-						<<rand_set[c].hub_port<<":" 
-						<<rand_set[c].peer_ip<<":"
-						<<rand_set[c].peer_port<<":"
-						<<rand_set[c].last_update;
-				}
-				//LOG(ss.str());
-				p->socket->sendCommand(CMD_PEER_LIST, ss.str().c_str(), ss.str().length());
+				p->socket->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length());
 	
 				p->last_peer_list_submit = time(0);
 			}
@@ -297,12 +267,6 @@ void Network::run() {
 		it++;
 	}
 
-	
-	// cleanup all unused objects
-	for(uint c=0;c<sockets.size(); c++){
-		if(this->sockets[c]->state & CON_STATE_DISCONNECTED)
-			delete this->sockets[c];
-	}
 	
 	for(list<Peer*>::iterator it = peers.begin(); 
 			it != peers.end();){
@@ -319,7 +283,7 @@ void Network::run() {
 	if((client = (VSLNode*)this->server->accept())){
 		cout << "[client] new connection: " << client->host << ":" << client->port << endl;
 		Peer *peer = new Peer(client);
-		peer->socket = client;
+		//peer->setListener(new _PeerListener(this));
 		peers.push_back(peer);
 	}
 }

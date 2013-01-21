@@ -349,6 +349,22 @@ void VSLNode::close(){
 	this->state = CON_STATE_WAIT_CLOSE;
 }
 
+void VSLNode::set_output(Node *other){
+	delete this->_output->_output;
+	this->_output->_output = other;
+	other->set_input(this);
+}
+void VSLNode::set_input(Node *other){ 
+	this->_input = other;
+	other->set_output(this);
+}
+Node* VSLNode::get_output(){
+	return this->_output->_output;
+}
+Node* VSLNode::get_input(){
+	return this->_input;
+}
+
 VSLNode::VSLNode(Node *next){
 	if(!next){
 		SSLNode *ssl = new SSLNode();

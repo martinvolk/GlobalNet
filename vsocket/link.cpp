@@ -40,19 +40,28 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 		ERROR("LINK URL FORMAT NOT SUPPORTED! PLEASE USE proto:host:port! "<<hostname);
 	}
 	
+	// connect the nodes appropriately.
 	if(proto.compare("tcp")==0){
-		LOG("LINK: issuing remote connect command: connecting to "<<hostname);
+		// do nothing since TCP will simply use sendData()
 		this->_output->sendCommand(RELAY_CONNECT, hostname, strlen(hostname));
 	}
 	else if(proto.compare("peer")==0){
 		LOG("LINK: connecting to new node: "<<host<<":"<<port);
-		// peg a peer on top of the current connection and issue a connect
-		VSLNode *peer = new VSLNode(0);
 		
-		if(this->_output)
-			peer->peg(this->_output);
-		peer->connect(host.c_str(), port);
-		this->_output = peer;
+		// add a new decoder node and connect it's output to the input of the current node
+		VSLNode *peer = new VSLNode(0);
+		if(this->_output){
+			// issue a remote relay connect
+			this->_output->sendCommand(RELAY_CONNECT, hostname, strlen(hostname));
+			
+			this->_output->_input = peer;
+			peer->set_output(this->_output);
+			this->_output = peer;
+		} else {
+			this->_output = peer;
+			peer->_input = this;
+			peer->connect(host.c_str(), port);
+		}
 	}
 	
 	return 1;

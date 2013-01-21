@@ -73,6 +73,8 @@ using namespace std;
 #define SOCKET_BUF_SIZE 8192
 
 #define SERV_LISTEN_PORT 9000
+#define CLIENT_BIND_PORT 9001
+
 // send a handful of peers to each connected peer every 10 seconds. 
 #define NET_PEER_LIST_INTERVAL 5
 // remove peers from the list if they have not been updated for one minute. 
@@ -174,6 +176,8 @@ typedef enum {
 	RELAY_CONNECT_OK, /// sent by relay upon success. 
 	RELAY_ERROR, /// [REL_ERR_*] sent by relay upon error. 
 	RELAY_DATA,
+	RELAY_PAIR, /// request to pair us with another peer. Relay replies with RELAY_PAIR_RZ_CONNECT
+	RELAY_PAIR_RZ_CONNECT, /// supplies IP address to the other peer for a rendezvous connection 
 	RELAY_DISCONNECT,
 	
 	/** DHT MESSAGES */
@@ -218,7 +222,14 @@ typedef int TCPSocket;
 typedef int UDPSocket;
 
 struct Network;
-    
+bool inet_ip_is_local(const string &ip);
+string inet_get_host_ip(const string &hostname);
+
+double milliseconds();
+int tokenize(const string& str,
+                      const string& delimiters, vector<string> &tokens);
+string errorstring(int e);
+
 // a connection node
 class Node{
 public:
@@ -266,6 +277,14 @@ public:
 	virtual void run();
 	virtual void peg(Node *other);
 	virtual void close();
+	virtual void set_output(Node *other);
+	virtual void set_input(Node *other);
+	virtual Node* get_output();
+	virtual Node* get_input();
+	
+private: 
+	// guard against assignments (we would need to implement a proper copy constructor later)
+	Node &operator=(const Node &other){ return *this; }
 }; 
 
 class VSLNode : public Node{
@@ -284,6 +303,10 @@ public:
 	virtual void peg(Node *other);
 	virtual void close();
 	
+	virtual void set_output(Node *other);
+	virtual void set_input(Node *other);
+	virtual Node* get_output();
+	virtual Node* get_input();
 private:
 	void _handle_packet(const Packet &packet);
 };
@@ -437,44 +460,57 @@ public:
 };
 
 
+typedef enum{
+	CAN_DO_NOTHING = 0,
+	CAN_ACCEPT_CONNECTIONS 	= 1<<0, // the router can accept connections on it's public IP
+	CAN_CONNECT_OUTGOING		= 1<<1, // the router can establish outgoing connections
+}PeerCapability; 
+
+struct PeerAddress{
+public:
+	PeerAddress():ip("0.0.0.0"), port(0){}
+	PeerAddress(const string &_ip, uint16_t _port):ip(_ip), port(_port){}
+	bool is_local(){ return inet_ip_is_local(ip); }
+	bool is_valid(){ return port != 0 && ip.compare("0.0.0.0") != 0; }
+	string ip;
+	uint16_t port;
+};
+
+// info that is sent over the network 
+struct PeerInfo{
+	PeerAddress listen_address;
+	PeerCapability caps; 
+};
 
 class PeerDatabase{
 public:
 	struct Record{
-		string hub_ip;
-		int hub_port;
-		string peer_ip;
-		int peer_port;
-		time_t last_update; 
-		bool is_local;
+		PeerAddress hub;		// address to the peer we received this record from (ie the hub)
+		PeerAddress peer;	// address of the peer
+		PeerCapability caps; // capabilities of this peer 
+		time_t last_update; // last time this record has been updated 
 		
-		Record(){
-			hub_ip = "0.0.0.0";
-			peer_ip = "0.0.0.0";
-			hub_port = peer_port = 0;
-			last_update = 0;
+		Record():
+			hub("0.0.0.0", 0),
+			peer("0.0.0.0", 0),
+			last_update(0){
+				
 		}
 		Record(const Record &other){
-			this->hub_ip = other.hub_ip;
-			this->hub_port = other.hub_port;
-			this->peer_ip = other.peer_ip;
-			this->peer_port = other.peer_port;
+			this->hub = other.hub;
+			this->peer = other.peer;
 			this->last_update = other.last_update;
-			this->is_local = other.is_local;
 		}
 		Record &operator=(const Record &other){
-			hub_ip = other.hub_ip;
-			hub_port = other.hub_port;
-			peer_port = other.peer_port;
-			peer_ip = other.peer_ip;
+			this->hub = other.hub;
+			this->peer = other.peer;
 			last_update = other.last_update;
-			is_local = other.is_local;
 			return *this;
 		}
 		SHA1Hash hash() const{
 			SHA1Hash ret;
 			stringstream ss;
-			ss<<hub_ip<<hub_port<<peer_ip<<peer_port; 
+			ss<<hub.ip<<hub.port<<peer.ip<<peer.port; 
 			ret.from_string(ss.str());
 			return ret;
 		}
@@ -488,7 +524,10 @@ public:
 	
 	void insert(const Record &data);
 	void update(const Record &data);
-	vector<Record> random(unsigned int count);
+	vector<Record> random(unsigned int count, bool include_nat_peers = false);
+	string to_string(unsigned int count);
+	void from_string(const string &str);
+		
 	void loop();
 private: 
 	bool running;
@@ -510,24 +549,34 @@ public:
 	void run();
 	
 	VSLNode *server; 
-	vector<Node*> sockets;
+	
+	// list of currently active outgoing links
 	vector<Link*> links;
 	
 	//Peer *createPeer();
 	
 	PeerDatabase peer_db;
 	
+	class PeerListener{
+		public:
+		virtual void handlePacket(const Packet &pack) = 0;
+	};
+	
 	class Peer{
 	public:
 		Peer(VSLNode *socket){
 			this->socket = socket;
 		}
-		~Peer(){
-			if(this->socket) delete socket;
-		}
+		~Peer();
+		void run();
+		void sendPeerList(const vector<PeerDatabase::Record> &peers);
+		bool is_connected();
+		bool is_disconnected();
+	
 		VSLNode *socket;
-		string listen_port;
-		
+		PeerAddress listen_addr;
+		PeerListener *listener;
+		bool peer_info_received;
 		time_t last_peer_list_submit; 
 	};
 	
@@ -554,12 +603,5 @@ Service &self_createService(Network &self, const char *name);
 _createConnection(Network &self, const char *name, bool client);
 */
 
-bool inet_ip_is_local(const string &ip);
-string inet_get_host_ip(const string &hostname);
-
-double milliseconds();
-int tokenize(const string& str,
-                      const string& delimiters, vector<string> &tokens);
-string errorstring(int e);
 
 #endif
