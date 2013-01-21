@@ -54,8 +54,12 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-//#define LOG(msg) {}
+#ifndef DEBUG
+#define LOG(msg) {}
+#else
 #define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#endif
+
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] =========> "<<msg << endl; }
 

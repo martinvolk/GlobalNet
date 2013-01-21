@@ -8,6 +8,8 @@ Free software. Part of the GlobalNet project.
 #ifndef _GCLIENT_H_
 #define _GCLIENT_H_ 
 
+//#define DEBUG
+
 #include <string>
 #ifndef WIN32
    #include <unistd.h>
@@ -40,8 +42,12 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-//#define LOG(msg) {}
+#ifndef DEBUG
+#define LOG(msg) {}
+#else
 #define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#endif
+
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] "<<msg << endl; }
 #define ARRSIZE(arr) (unsigned long)(sizeof(arr)/sizeof(arr[0]))
