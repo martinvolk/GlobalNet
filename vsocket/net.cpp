@@ -183,9 +183,19 @@ Network::Network(){
 	
 	this->server = new VSLNode(0);
 	
+	vector< pair<string, string> > ifs = inet_get_interfaces();
+	string listen_adr = "127.0.0.1";
+	
+	INFO("Available interfaces:");
+	for(int c =0; c<ifs.size(); c++){
+		INFO(ifs[c].first<<": "<<ifs[c].second);
+		if(ifs[c].second.compare("127.0.0.1") != 0)
+			listen_adr = ifs[c].second;
+	}
+	
 	// attempt to find an available listen port. 1000 alternatives should be enough
 	for(int port = SERV_LISTEN_PORT; port <= SERV_LISTEN_PORT + 1000; port ++){
-		if(this->server->listen("localhost", port)){
+		if(this->server->listen(listen_adr.c_str(), port)){
 			LOG("NET: peer listening on "<<this->server->host<<":"<<this->server->port);
 			break;
 		}
@@ -282,6 +292,11 @@ void Network::run() {
 	VSLNode *client = 0;
 	if((client = (VSLNode*)this->server->accept())){
 		cout << "[client] new connection: " << client->host << ":" << client->port << endl;
+		PeerDatabase::Record r;
+		r.peer = PeerAddress(client->host, 9000);
+		r.hub = PeerAddress(server->host, server->port);
+		peer_db.insert(r);
+		
 		Peer *peer = new Peer(client);
 		//peer->setListener(new _PeerListener(this));
 		peers.push_back(peer);

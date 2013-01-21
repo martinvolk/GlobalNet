@@ -224,6 +224,7 @@ typedef int UDPSocket;
 struct Network;
 bool inet_ip_is_local(const string &ip);
 string inet_get_host_ip(const string &hostname);
+vector< pair<string, string> > inet_get_interfaces();
 
 double milliseconds();
 int tokenize(const string& str,

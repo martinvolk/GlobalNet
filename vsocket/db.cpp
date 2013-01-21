@@ -57,7 +57,10 @@ void PeerDatabase::insert(const Record &_data){
 		LOG("PDB: skipping peer: ip same as hub!");
 		return;
 	}
-	
+	if(data.peer.is_local()){
+		//LOG("PDB: skipping peer because it's a local address!");
+		return;
+	}
 	data.last_update = time(0);
 	LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
 	this->db[data.hash().hex()] = data;
@@ -86,7 +89,7 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 	rand_set.reserve(this->db.size());
 	for(map<string, Record>::iterator it = this->db.begin(); 
 			it != this->db.end(); it++){
-		LOG((*it).second.hash().hex());
+		LOG((*it).second.hash().hex()<<" :"<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		if(!include_nat_peers && (*it).second.hub.is_valid())
 			continue;
 		rand_set.push_back((*it).second);

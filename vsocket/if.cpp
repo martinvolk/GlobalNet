@@ -101,7 +101,7 @@ bool inet_ip_is_local(const string &ip){
 					inet_ip_in_range(ip, "127.0.0.0", "255.0.0.0"));
 }
 
-vector< pair<string, string> > IF_get_interfaces()
+vector< pair<string, string> > inet_get_interfaces()
 {
     int sock;
     struct ifconf ifconf;
