@@ -104,7 +104,8 @@ class _locker{
 		pthread_mutex_lock(lk);
 	}
 	~_locker(){
-		pthread_mutex_unlock(lk);
+		if(!pthread_mutex_trylock(lk))
+			pthread_mutex_unlock(lk);
 	}
 	void unlock(){ pthread_mutex_unlock(lk); }
 private: 
