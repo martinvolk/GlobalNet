@@ -111,8 +111,8 @@ private:
 	pthread_mutex_t *lk;
 };
 
-#define LOCK(mu, it) _locker __lk_##mu##it(mu);
-#define UNLOCK(mu, it) __lk_##mu##it.unlock();
+#define LOCK(mu, it) _locker __lk_##it(mu);
+#define UNLOCK(mu, it) __lk_##it.unlock();
 
 class SHA1Hash {
 private: 
@@ -610,8 +610,8 @@ public:
 		VSLNode *socket;
 		PeerListener *listener;
 		bool peer_info_received;
-		pthread_mutex_t mu;
-		pthread_t worker;
+		pthread_mutex_t *mu;
+		pthread_t *worker;
 	};
 	
 	list<Peer*> peers;

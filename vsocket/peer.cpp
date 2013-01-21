@@ -9,19 +9,22 @@ static void *_peer_worker(void *data){
 Network::Peer::Peer(VSLNode *socket){
 	this->socket = socket;
 	running = true;
-	pthread_create(&worker, 0, &_peer_worker, this);
+	mu = new pthread_mutex_t();
+	worker = new pthread_t();
+	pthread_mutex_init(mu, 0);
+	pthread_create(worker, 0, &_peer_worker, this);
 }
 
 Network::Peer::~Peer(){
 	if(this->socket) delete socket;
 	running = false;
 	void *ret;
-	pthread_join(this->worker, &ret);
+	pthread_join(*this->worker, &ret);
 }
 
 void Network::Peer::loop(){
 	while(running) {
-		LOCK(mu, 0);
+		LOCK(*mu, 0);
 		address.ip = socket->host;
 		address.port = socket->port;
 		socket->run();
@@ -30,12 +33,12 @@ void Network::Peer::loop(){
 }
 
 int Network::Peer::recvCommand(Packet *dst){
-	LOCK(mu, 0);
+	LOCK(*mu, 0);
 	return socket->recvCommand(dst);
 }
 
 int Network::Peer::sendCommand(NodeMessage msg, const char *data, size_t size){
-	LOCK(mu, 0);
+	LOCK(*mu, 0);
 	return socket->sendCommand(msg, data, size);
 }
 
