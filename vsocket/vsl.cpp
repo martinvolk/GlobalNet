@@ -185,8 +185,6 @@ void VSLNode::_handle_packet(const Packet &packet){
 		memcpy(tmp, packet.data, min((unsigned long)SOCKET_BUF_SIZE, (unsigned long)packet.cmd.size));
 		tmp[packet.cmd.size] = 0;
 		
-		LOG("DATA: "<<tmp);
-		
 		string str = string(tmp);
 		vector<string> tokens;
 		tokenize(str, ":",tokens);
@@ -204,7 +202,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 		
 		stringstream err;
 		
-		LOG("[relay] connecting to: "<<host<<":"<<port);
+		INFO("[relay] connecting to: "<<host<<":"<<port);
 		
 		// before we start forwarding data (done in the main loop)
 		// we create a new connection and issue a connect on it which 

@@ -229,6 +229,8 @@ namespace VSL{
 				it != net->peers.end(); it++ ){
 			Network::Peer *peer = (*it);
 			SEND_SOCK(socket, "peer: " << peer->socket->host << ":"<<peer->socket->port<<" state: "<<con_state_to_string(peer->socket->state));
+			np++;
 		}
+		SEND_SOCK(socket, "Total: "<<np<<" peers.");
 	}
 }
