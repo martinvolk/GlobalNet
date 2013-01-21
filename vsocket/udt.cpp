@@ -235,7 +235,7 @@ UDTNode::UDTNode(){
 }
 
 UDTNode::~UDTNode(){
-	LOG("UDT: deleting "<<this->host<<":"<<this->port);
+	//LOG("UDT: deleting "<<this->host<<":"<<this->port);
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

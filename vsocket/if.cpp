@@ -111,10 +111,6 @@ string inet_get_ip(const string &host){
 			herror("gethostbyname");
 			return "0.0.0.0";
 	}
-
-	// print information about this host:
-	printf("Official name is: %s\n", he->h_name);
-	printf("    IP addresses: ");
 	addr_list = (struct in_addr **)he->h_addr_list;
 	if(addr_list[0] != NULL)
 		return inet_ntoa(*addr_list[0]);

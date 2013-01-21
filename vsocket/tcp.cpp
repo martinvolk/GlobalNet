@@ -217,7 +217,7 @@ TCPNode::TCPNode(){
 }
 
 TCPNode::~TCPNode(){
-	LOG("TCP: deleting "<<this->host<<":"<<this->port);
+	//LOG("TCP: deleting "<<this->host<<":"<<this->port);
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

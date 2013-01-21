@@ -385,7 +385,7 @@ VSLNode::VSLNode(Node *next){
 }
 
 VSLNode::~VSLNode(){
-	LOG("VSL: deleting "<<this->host<<":"<<this->port);
+	//LOG("VSL: deleting "<<this->host<<":"<<this->port);
 	
 	
 }

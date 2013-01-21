@@ -300,7 +300,7 @@ SSLNode::SSLNode(){
 }
 
 SSLNode::~SSLNode(){
-	LOG("SSL: deleting "<<this->host<<":"<<this->port);
+	//LOG("SSL: deleting "<<this->host<<":"<<this->port);
 	
 	if(!(this->state & CON_STATE_INVALID))
 		this->close();
