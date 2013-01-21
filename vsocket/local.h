@@ -102,13 +102,15 @@ class _locker{
 	_locker(pthread_mutex_t &lock){
 		lk = &lock;
 		pthread_mutex_lock(lk);
+		unlocked = false;
 	}
 	~_locker(){
-		if(!pthread_mutex_trylock(lk))
+		if(!unlocked)
 			pthread_mutex_unlock(lk);
 	}
-	void unlock(){ pthread_mutex_unlock(lk); }
+	void unlock(){ unlocked = true; pthread_mutex_unlock(lk); }
 private: 
+	bool unlocked;
 	pthread_mutex_t *lk;
 };
 
