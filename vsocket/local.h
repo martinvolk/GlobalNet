@@ -76,7 +76,7 @@ using namespace std;
 #define CLIENT_BIND_PORT 9001
 
 // send a handful of peers to each connected peer every 10 seconds. 
-#define NET_PEER_LIST_INTERVAL 5
+#define NET_PEER_LIST_INTERVAL 10
 // remove peers from the list if they have not been updated for one minute. 
 #define NET_PEER_PURGE_INTERVAL 30
 
@@ -534,7 +534,10 @@ private:
 	bool running;
 	pthread_t worker;
 	pthread_mutex_t mu;
+	
+	map<string, Record> quarantine; 
 	map<string, Record> db;
+	map<string, Record> offline; 
 };
 
 class Network{

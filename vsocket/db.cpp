@@ -21,9 +21,43 @@ private:
 	pthread_mutex_t *lk;
 };
 
-#define LOCK(mu) _locker __lk_##mu(mu);
-#define UNLOCK(mu) __lk_##mu.unlock();
+#define LOCK(mu, it) _locker __lk_##mu##it(mu);
+#define UNLOCK(mu, it) __lk_##mu##it.unlock();
 
+static bool _try_connect(const string &host, int port){
+	stringstream ss;
+	ss<<port;
+	
+	struct addrinfo hints, *local, *peer;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	
+	if (0 != getaddrinfo(NULL, ss.str().c_str(), &hints, &local)){
+		ERROR("Could not get address info on local address!");
+	}
+	
+	UDTSOCKET client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+	if (0 != getaddrinfo(host.c_str(), ss.str().c_str(), &hints, &peer)){
+		LOG("PDB: peer vetting failed: error getting peer address!");
+		goto fail;
+	}
+	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
+	{
+		LOG("PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
+		goto fail;
+	}
+	freeaddrinfo(local);
+	freeaddrinfo(peer);
+	UDT::close(client);
+	return true;
+fail:
+	freeaddrinfo(local);
+	freeaddrinfo(peer);
+	UDT::close(client);
+	return false;
+}
 /// a thread that ensures the most up to date data in the database. 
 
 static void *_db_worker(void *data){
@@ -45,7 +79,7 @@ PeerDatabase::~PeerDatabase(){
 }
 
 void PeerDatabase::insert(const Record &_data){
-	LOCK(mu);
+	LOCK(mu,0);
 	
 	Record data = _data;
 	if(data.peer.ip.compare("") == 0){
@@ -63,16 +97,16 @@ void PeerDatabase::insert(const Record &_data){
 	}
 	data.last_update = time(0);
 	//LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
-	this->db[data.hash().hex()] = data;
+	this->quarantine[data.hash().hex()] = data;
 }
 
 void PeerDatabase::update(const Record &_data){
-	LOCK(mu);
+	LOCK(mu,0);
 	
 	Record data = _data;
 	map<string, Record>::iterator it = this->db.find(data.hash().hex());
 	if(it == this->db.end()) { 
-		UNLOCK(mu); 
+		UNLOCK(mu,0); 
 		
 		insert(data); 
 		return;
@@ -83,7 +117,7 @@ void PeerDatabase::update(const Record &_data){
 }
 
 vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool include_nat_peers){
-	LOCK(mu);
+	LOCK(mu,0);
 	
 	vector<Record> rand_set;
 	rand_set.reserve(this->db.size());
@@ -141,39 +175,71 @@ void PeerDatabase::from_string(const string &peers){
 }
 
 void PeerDatabase::loop(){
+	
+	
 	while(running){
 		{
-			LOCK(mu);
-			/*
-			vector<Record> peers;
-			peers.reserve(db.size());
-			for(map<string, Record>::iterator it = this->db.begin(); 
-					it != this->db.end(); ){ peers.push_back((*it).second); } 
-			*/
-			/*
-			Connection con;	
-			con.connect("random route");
-			int c = 10;
-			while(con.state() != Node::STATE_CONNECTED && c != 0){
-				sleep(1);
-				c--;
-			}
-			// success
-			if(c){
-				// save the record in the valid peers database
-			} else{
-				// discard
-			}*/
 			
-			for(map<string, Record>::iterator it = this->db.begin(); 
-					it != this->db.end(); ){
-				time_t t = time(0);
-				if(t-(*it).second.last_update > NET_PEER_PURGE_INTERVAL){
-					LOG("PDB: purge: deleting record: "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
-					this->db.erase(it++);
+			// test peers that are in quarantine and add them to the database if everything checks out. 
+			vector<Record> tmp;
+			
+			LOCK(mu,0);
+			for(map<string, Record>::iterator it = this->quarantine.begin(); 
+					it != this->quarantine.end(); it++) tmp.push_back((*it).second); 
+			quarantine.clear();
+			UNLOCK(mu,0);
+			
+			for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
+				bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+				
+				// add the peer to the database
+				if(reachable){
+					LOCK(mu,1);
+					db[(*it).hash().hex()] = (*it);
+					UNLOCK(mu,1);
 				}
-				else {
-					it++;
+			}
+			
+			// check peers that are in the database and remove the ones that are unreachable. 
+			tmp.clear();
+			LOCK(mu,2);
+			for(map<string, Record>::iterator it = this->db.begin(); 
+					it != this->db.end(); it++) tmp.push_back((*it).second); 
+			UNLOCK(mu,2);
+			
+			for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
+				// try to establish a connection to the peer. 
+				bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+				
+				// remove if unreachable and save in offline peers so that we can later reconnect
+				if(!reachable){
+					LOCK(mu,1);
+					LOG("PDB: removing unreachable host: "<<(*it).peer.ip<<":"<<(*it).peer.port);
+					db.erase(db.find((*it).hash().hex()));
+					offline[(*it).hash().hex()] = (*it);
+					UNLOCK(mu,1);
+				}
+			}
+			
+			// check all offline peers and move the ones that are reachable back into the database
+			// (for example if a host temporarily goes offline, we have our little memory here that comes in handy). 
+			tmp.clear();
+			LOCK(mu,4);
+			for(map<string, Record>::iterator it = this->offline.begin(); 
+					it != this->offline.end(); it++) tmp.push_back((*it).second); 
+			UNLOCK(mu,4);
+			
+			for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
+				// try to establish a connection to the peer. 
+				bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+				
+				// remove if unreachable and save in offline peers so that we can later reconnect
+				if(reachable){
+					LOCK(mu,1);
+					LOG("PDB: host back online, readding: "<<(*it).peer.ip<<":"<<(*it).peer.port);
+					offline.erase(offline.find((*it).hash().hex()));
+					db[(*it).hash().hex()] = (*it);
+					UNLOCK(mu,1);
 				}
 			}
 		}
