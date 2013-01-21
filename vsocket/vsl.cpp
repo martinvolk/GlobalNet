@@ -256,7 +256,7 @@ void VSLNode::run(){
 		this->port = this->_output->port;
 		// send information about our status to the other peer. 
 		
-		LOG("VSL: connected to "<<hostname<<":"<<port);
+		LOG("VSL: connected to "<<host<<":"<<port);
 		// toggle our state to connected as well. 
 		this->state = CON_STATE_ESTABLISHED;
 	}

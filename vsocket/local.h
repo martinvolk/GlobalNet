@@ -54,6 +54,8 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
+#define DEBUG
+
 #ifndef DEBUG
 #define LOG(msg) {}
 #else
