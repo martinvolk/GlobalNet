@@ -40,6 +40,8 @@ struct ifconf {
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#include "local.h"
+
 #define MAXINTERFACES 20
  
 using namespace std;
@@ -99,6 +101,24 @@ bool inet_ip_is_local(const string &ip){
 					inet_ip_in_range(ip, "172.16.0.0", "255.240.0.0") ||
 					inet_ip_in_range(ip, "192.168.0.0", "255.255.0.0") || 
 					inet_ip_in_range(ip, "127.0.0.0", "255.0.0.0"));
+}
+
+string inet_get_ip(const string &host){
+	struct hostent *he;
+	struct in_addr **addr_list;
+	
+	if ((he = gethostbyname(host.c_str())) == NULL) {  // get the host info
+			herror("gethostbyname");
+			return "0.0.0.0";
+	}
+
+	// print information about this host:
+	printf("Official name is: %s\n", he->h_name);
+	printf("    IP addresses: ");
+	addr_list = (struct in_addr **)he->h_addr_list;
+	if(addr_list[0] != NULL)
+		return inet_ntoa(*addr_list[0]);
+	return "0.0.0.0";
 }
 
 vector< pair<string, string> > inet_get_interfaces()

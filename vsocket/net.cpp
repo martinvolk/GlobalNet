@@ -212,6 +212,10 @@ void Network::connect(const char *hostname, int port){
 	VSLNode *node = new VSLNode(0);
 	node->connect(hostname, port);
 	peers.push_back(new Peer(node));
+	PeerDatabase::Record r;
+	r.peer.ip = inet_get_ip(hostname);
+	r.peer.port = port;
+	peer_db.insert(r);
 }
 
 void Network::run() {

@@ -83,7 +83,6 @@ using namespace std;
 
 // maximum simultaneous connections
 #define MAX_CONNECTIONS 1024
-#define MAX_LINKS 1024
 #define MAX_SERVERS 32
 #define MAX_SOCKETS 1024
 #define MAX_PEERS 1024
@@ -225,6 +224,7 @@ struct Network;
 bool inet_ip_is_local(const string &ip);
 string inet_get_host_ip(const string &hostname);
 vector< pair<string, string> > inet_get_interfaces();
+string inet_get_ip(const string &hostname);
 
 double milliseconds();
 int tokenize(const string& str,

@@ -201,6 +201,7 @@ void PeerDatabase::loop(){
 					db[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
 				}
+				sleep(1);
 			}
 			
 			// check peers that are in the database and remove the ones that are unreachable. 
@@ -222,6 +223,7 @@ void PeerDatabase::loop(){
 					offline[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
 				}
+				sleep(1);
 			}
 			
 			// check all offline peers and move the ones that are reachable back into the database
@@ -244,6 +246,7 @@ void PeerDatabase::loop(){
 					db[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
 				}
+				sleep(1);
 			}
 		}
 		sleep(1);
