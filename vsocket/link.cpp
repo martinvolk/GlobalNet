@@ -43,6 +43,7 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 	// connect the nodes appropriately.
 	if(proto.compare("tcp")==0){
 		// do nothing since TCP will simply use sendData()
+		LOG("LINK: issuing remote connect to: "<<host<<":"<<port);
 		this->_output->sendCommand(RELAY_CONNECT, hostname, strlen(hostname));
 	}
 	else if(proto.compare("peer")==0){

@@ -119,12 +119,26 @@ void SocksService::run(){
 		send(z, &socks, 2, 0);
 		// receive a request header
 		recv(z, &socks, sizeof(socks_t), 0);
+		char host[256];
 		switch(socks.atype){
 			case 1: // ipv4 address
-				
+			{
+				int ip; 
+				memcpy(&ip, socks.data, 4);
+				in_addr addr;
+				addr.s_addr = ip;
+				strcpy(host, inet_ntoa(addr));
+				memcpy(&port, socks.data+4, sizeof(port));
+				port = ntohs(port);
+			}
 			break; 
 			case 3: // domain name
 			{
+				unsigned char size = (unsigned char)socks.data[0];
+				memcpy(host, socks.data+1, min(ARRSIZE(host), (unsigned long)size));
+				host[size] = 0;
+				memcpy(&port, socks.data+1+size, sizeof(port));
+				port = ntohs(port);
 				//hostent *hp = gethostbyname(socks.data);
 				//memcpy((char *)&remote_addr, hp->h_addr, hp->h_length);
 				break;
@@ -133,12 +147,7 @@ void SocksService::run(){
 				cout<<"IPv6 not supported!"<<endl;
 				close(z);
 		} 
-		char host[256];
-		unsigned char size = (unsigned char)socks.data[0];
-		memcpy(host, socks.data+1, min(ARRSIZE(host), (unsigned long)size));
-		host[size] = 0;
-		memcpy(&port, socks.data+1+size, sizeof(port));
-		port = ntohs(port);
+	
 		LOG("SOCKS v"<<int(socks.version)<<", CODE: "<<int(socks.code)<<", AT:" <<
 				int(socks.atype)<<", IP: "<<host<<":"<<port);
 				

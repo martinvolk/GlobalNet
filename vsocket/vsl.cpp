@@ -171,7 +171,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 		// receiving a connect when we already have an input node is invalid
 		// although in the future it may be useful as a way to reuse intermediate peer links. 
 		if(this->_input){
-			ERROR("RELAY_CONNECT received when we already have an _input node.");
+			//ERROR("RELAY_CONNECT received when we already have an _input node.");
 			
 			// prevent recursive delete
 			if(this->_input->_input == this)

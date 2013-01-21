@@ -114,7 +114,7 @@ Node* Node::get_input(){
 }
 	
 Node::~Node(){
-	LOG("NODE: deleting "<<this->host<<":"<<this->port);
+	//LOG("NODE: deleting "<<this->host<<":"<<this->port);
 	
 	BIO_free(this->read_buf);
 	BIO_free(this->write_buf);

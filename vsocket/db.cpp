@@ -40,12 +40,12 @@ static bool _try_connect(const string &host, int port){
 	
 	UDTSOCKET client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
 	if (0 != getaddrinfo(host.c_str(), ss.str().c_str(), &hints, &peer)){
-		LOG("PDB: peer vetting failed: error getting peer address!");
+		//LOG("PDB: peer vetting failed: error getting peer address!");
 		goto fail;
 	}
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
 	{
-		LOG("PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
+		//LOG("PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
 		goto fail;
 	}
 	freeaddrinfo(local);
@@ -126,9 +126,9 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 	rand_set.reserve(this->db.size());
 	for(map<string, Record>::iterator it = this->db.begin(); 
 			it != this->db.end(); it++){
-		LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		if((*it).second.peer.port != SERV_LISTEN_PORT)
 			continue;
+		LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		rand_set.push_back((*it).second);
 	}
 	if(rand_set.size()==0) return rand_set;
@@ -182,7 +182,6 @@ void PeerDatabase::loop(){
 	
 	while(running){
 		{
-			
 			// test peers that are in quarantine and add them to the database if everything checks out. 
 			vector<Record> tmp;
 			
@@ -223,7 +222,6 @@ void PeerDatabase::loop(){
 					offline[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
 				}
-				sleep(1);
 			}
 			
 			// check all offline peers and move the ones that are reachable back into the database
@@ -246,10 +244,10 @@ void PeerDatabase::loop(){
 					db[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
 				}
-				sleep(1);
+				sleep(3);
 			}
 		}
-		sleep(1);
+		sleep(5);
 	}
 	LOG("PDB: main loop exiting..");
 }
