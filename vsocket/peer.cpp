@@ -16,7 +16,9 @@ Network::Peer::Peer(VSLNode *socket){
 }
 
 Network::Peer::~Peer(){
+	LOCK(*mu, 0);
 	if(this->socket) delete socket;
+	UNLOCK(*mu, 0);
 	running = false;
 	void *ret;
 	pthread_join(*this->worker, &ret);
@@ -28,6 +30,7 @@ void Network::Peer::loop(){
 		address.ip = socket->host;
 		address.port = socket->port;
 		socket->run();
+		UNLOCK(*mu, 0);
 		usleep(100);
 	}
 }
