@@ -218,7 +218,7 @@ void Network::run() {
 	PeerDatabase::Record r;
 	r.peer.ip = this->server->host;
 	r.peer.port = this->server->port;
-	peer_db.update(r);
+	peer_db.insert(r);
 	
 	// monitor peers for replies
 	for(list<Peer*>::iterator it = peers.begin(); 

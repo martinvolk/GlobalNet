@@ -89,8 +89,8 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 	rand_set.reserve(this->db.size());
 	for(map<string, Record>::iterator it = this->db.begin(); 
 			it != this->db.end(); it++){
-		LOG((*it).second.hash().hex()<<" :"<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
-		if(!include_nat_peers && (*it).second.hub.is_valid())
+		LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
+		if((*it).second.peer.port != SERV_LISTEN_PORT)
 			continue;
 		rand_set.push_back((*it).second);
 	}
