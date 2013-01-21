@@ -126,8 +126,8 @@ Node *SSLNode::accept(){
 			
 			con->_init_ssl_socket(true);
 			
-			con->host = peer.host;
-			con->port = peer.port;
+			con->host = peer->host;
+			con->port = peer->port;
 			
 			con->_output = peer;
 			
