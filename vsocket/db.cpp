@@ -62,7 +62,7 @@ void PeerDatabase::insert(const Record &_data){
 		return;
 	}
 	data.last_update = time(0);
-	LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
+	//LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
 	this->db[data.hash().hex()] = data;
 }
 
