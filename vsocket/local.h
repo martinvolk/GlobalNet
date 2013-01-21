@@ -606,6 +606,7 @@ public:
 		time_t last_peer_list_submit; 
 		PeerAddress listen_addr;
 	private:
+		bool running;
 		VSLNode *socket;
 		PeerListener *listener;
 		bool peer_info_received;

@@ -8,17 +8,19 @@ static void *_peer_worker(void *data){
 
 Network::Peer::Peer(VSLNode *socket){
 	this->socket = socket;
+	running = true;
 	pthread_create(&worker, 0, &_peer_worker, this);
 }
 
 Network::Peer::~Peer(){
 	if(this->socket) delete socket;
+	running = false;
 	void *ret;
 	pthread_join(this->worker, &ret);
 }
 
 void Network::Peer::loop(){
-	while(socket && socket->state & CON_STATE_CONNECTED) {
+	while(running) {
 		LOCK(mu, 0);
 		address.ip = socket->host;
 		address.port = socket->port;
