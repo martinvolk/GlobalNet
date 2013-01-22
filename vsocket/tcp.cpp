@@ -186,7 +186,7 @@ void TCPNode::run(){
 		// send/recv data
 		while(!BIO_eof(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				LOG("TCP: sending "<<rc<<" bytes of data to "<<this->host<<":"<<this->port);
+				//LOG("TCP: sending "<<rc<<" bytes of data to "<<this->host<<":"<<this->port);
 				if((rc = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))<0){
 					perror("TCP send");
 				}

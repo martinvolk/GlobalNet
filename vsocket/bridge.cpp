@@ -75,13 +75,13 @@ void BridgeNode::run(){
 		
 		// read data from one end and forward it to the other end and vice versa
 		if ((rc = this->_input->recv(tmp, SOCKET_BUF_SIZE))>0){
-			LOG("BRIDGE: received "<<rc<<" bytes from _input");
-			LOG(hexencode(tmp, rc));
+			//LOG("BRIDGE: received "<<rc<<" bytes from _input");
+			//LOG(hexencode(tmp, rc));
 			this->_output->send(tmp, rc);
 		}
 		if ((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
-			LOG("BRIDGE: received "<<rc<<" bytes from output!");
-			LOG(hexencode(tmp, rc));
+			//LOG("BRIDGE: received "<<rc<<" bytes from output!");
+			//LOG(hexencode(tmp, rc));
 			this->_input->send(tmp, rc);
 		}
 	}

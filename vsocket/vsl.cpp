@@ -143,7 +143,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// if we received DATA packet then data is stored in the buffer that will
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
-		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
+		//LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
 		BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	// received when the relay has no more data to send or when the remote 
