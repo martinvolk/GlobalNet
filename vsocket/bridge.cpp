@@ -81,6 +81,7 @@ void BridgeNode::run(){
 		}
 		if ((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
 			LOG("BRIDGE: received "<<rc<<" bytes from output!");
+			LOG(hexencode(tmp, rc));
 			this->_input->send(tmp, rc);
 		}
 	}
