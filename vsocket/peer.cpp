@@ -12,7 +12,7 @@ Network::Peer::Peer(VSLNode *socket){
 	mu = new pthread_mutex_t();
 	worker = new pthread_t();
 	pthread_mutex_init(mu, 0);
-	pthread_create(worker, 0, &_peer_worker, this);
+	//pthread_create(worker, 0, &_peer_worker, this);
 }
 
 Network::Peer::~Peer(){
@@ -24,13 +24,16 @@ Network::Peer::~Peer(){
 	pthread_join(*this->worker, &ret);
 }
 
+void Network::Peer::run(){
+	LOCK(*mu, 0);
+	address.ip = socket->host;
+	address.port = socket->port;
+	socket->run();
+	UNLOCK(*mu, 0);
+}
 void Network::Peer::loop(){
 	while(running) {
-		LOCK(*mu, 0);
-		address.ip = socket->host;
-		address.port = socket->port;
-		socket->run();
-		UNLOCK(*mu, 0);
+		run();
 		usleep(100);
 	}
 }

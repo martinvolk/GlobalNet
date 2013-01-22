@@ -238,7 +238,7 @@ void Network::run() {
 			peers.erase(it++);
 			continue;
 		}
-		
+		p->run();
 		if(p->is_connected()){
 			if(p->recvCommand(&pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);

@@ -555,7 +555,7 @@ public:
 	vector<Record> random(unsigned int count, bool include_nat_peers = false);
 	string to_string(unsigned int count);
 	void from_string(const string &str);
-		
+	
 	void loop();
 private: 
 	bool running;
@@ -598,6 +598,7 @@ public:
 	public:
 		Peer(VSLNode *socket);
 		~Peer();
+		void run();
 		void loop();
 		void sendPeerList(const vector<PeerDatabase::Record> &peers);
 		int recvCommand(Packet *pack);
