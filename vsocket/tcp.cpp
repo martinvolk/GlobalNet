@@ -164,16 +164,16 @@ void TCPNode::run(){
 	
 	if(this->state & CON_STATE_CONNECTING){
 		if ((rc = ::connect(socket, (struct sockaddr*)&_socket_addr, sizeof(_socket_addr))) == -1
-			&& errno != EINPROGRESS) {
-				LOG("TCP: connection failed to "<<host<<":"<<port);
-				::close(socket);
-				state = CON_STATE_DISCONNECTED;
+			&& (errno == EINPROGRESS || errno == EALREADY)) {
+			// in progress 
+			return;
 		} else if(rc == 0){
 			LOG("TCP: successfully connected to "<<host<<":"<<port);
 			state = CON_STATE_ESTABLISHED; 
 		} else {
-			// in progress
-			return;
+			LOG("TCP: connection failed to "<<host<<":"<<port);
+			::close(socket);
+			state = CON_STATE_DISCONNECTED;
 		}
 	}
 	/*
