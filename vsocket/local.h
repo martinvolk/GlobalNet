@@ -595,7 +595,7 @@ public:
 	public:
 		Peer(VSLNode *socket);
 		~Peer();
-		void run();
+		
 		void loop();
 		void sendPeerList(const vector<PeerDatabase::Record> &peers);
 		int recvCommand(Packet *pack);
@@ -607,6 +607,8 @@ public:
 		time_t last_peer_list_submit; 
 		PeerAddress listen_addr;
 	private:
+		void run();
+		
 		bool running;
 		VSLNode *socket;
 		PeerListener *listener;
