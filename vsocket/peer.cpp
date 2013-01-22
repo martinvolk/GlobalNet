@@ -34,7 +34,11 @@ void Network::Peer::run(){
 void Network::Peer::loop(){
 	while(true) {
 		LOCK(*mu, 0);
-		if(running) run();
+		if(running){
+			address.ip = socket->host;
+			address.port = socket->port;
+			socket->run();
+		}
 		else break;
 		UNLOCK(*mu, 0);
 		usleep(100);
