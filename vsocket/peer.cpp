@@ -12,7 +12,7 @@ Network::Peer::Peer(VSLNode *socket){
 	mu = new pthread_mutex_t();
 	worker = new pthread_t();
 	pthread_mutex_init(mu, 0);
-	pthread_create(worker, 0, &_peer_worker, this);
+	//pthread_create(worker, 0, &_peer_worker, this);
 }
 
 Network::Peer::~Peer(){

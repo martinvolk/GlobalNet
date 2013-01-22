@@ -375,6 +375,7 @@ public:
 	virtual void close();
 private:
 	int socket;
+	struct sockaddr_in _socket_addr;
 };
 
 class UDTNode : public Node{

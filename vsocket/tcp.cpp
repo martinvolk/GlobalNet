@@ -21,7 +21,6 @@ static int socket_writable(int socket){
 }*/
 
 int TCPNode::connect(const char *host, uint16_t port){
-	struct sockaddr_in server;
 	struct hostent *hp;
 	int s;
 	
@@ -30,32 +29,31 @@ int TCPNode::connect(const char *host, uint16_t port){
 		fprintf(stderr, "%s: unknown host\n", host);
 		return -1;
 	}
-	memset((char *)&server, 0, sizeof(server));
-	memcpy((char *)&server.sin_addr, hp->h_addr, hp->h_length);
+	memset((char *)&_socket_addr, 0, sizeof(_socket_addr));
+	memcpy((char *)&_socket_addr.sin_addr, hp->h_addr, hp->h_length);
 	//server.sin_len = sizeof(server);
-	server.sin_family = AF_INET;
-	server.sin_port = htons(port);
+	_socket_addr.sin_family = AF_INET;
+	_socket_addr.sin_port = htons(port);
 	s = ::socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s < 0) {
 		perror("socket");
 		return -1;
 	}
 	
-	::connect(s, (struct sockaddr *)&server, sizeof(server));
-	
 	int val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
+	this->state = CON_STATE_CONNECTING; 
+	this->socket = s;
+	
 	this->host = inet_get_host_ip(host);
 	this->port = port;
-		
-	this->socket = s;
 	
 	// we set the state right away to established because the connect
 	// call is blocking
-	this->state = CON_STATE_ESTABLISHED;
+	//this->state = CON_STATE_ESTABLISHED;
 	
-	return s;
+	return 1;
 }
 
 Node *TCPNode::accept(){
@@ -163,7 +161,17 @@ void TCPNode::run(){
 	int rc;
 	
 	Node::run();
-		
+	
+	if(this->state & CON_STATE_CONNECTING){
+		if (::connect(socket, (struct sockaddr*)&_socket_addr, sizeof(_socket_addr)) == -1
+			&& errno != EINPROGRESS) {
+				::close(socket);
+				state = CON_STATE_DISCONNECTED;
+		} else {
+			LOG("TCP: successfully connected to "<<host<<":"<<port);
+			state = CON_STATE_ESTABLISHED; 
+		}
+	}
 	/*
 	if(this->state & CON_STATE_CONNECTING && socket_writable(this->socket)>0){
 		this->state = CON_STATE_ESTABLISHED;
@@ -193,7 +201,6 @@ void TCPNode::run(){
 		}
 	}
 }
-
 
 void TCPNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
