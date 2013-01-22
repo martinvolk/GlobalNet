@@ -210,10 +210,6 @@ int UDTNode::listen(const char *host, uint16_t port){
 	return 1;
 }
 
-void UDTNode::peg(Node *other){
-	ERROR("UDT is an ouput node. It can not be pegged!");
-}
-
 void UDTNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;

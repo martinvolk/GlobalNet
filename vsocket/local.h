@@ -328,7 +328,6 @@ public:
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
 	virtual void run();
-	virtual void peg(Node *other);
 	virtual void close();
 	
 	virtual void set_output(Node *other);
@@ -373,7 +372,6 @@ public:
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
 	virtual void run();
-	virtual void peg(Node *other);
 	virtual void close();
 private:
 	int socket;
@@ -392,7 +390,6 @@ public:
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
 	virtual void run();
-	virtual void peg(Node *other);
 	virtual void close();
 private:
 	UDTSOCKET socket;
@@ -427,7 +424,6 @@ public:
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
 	virtual void run();
-	virtual void peg(Node *other);
 	virtual void close();
 };
 

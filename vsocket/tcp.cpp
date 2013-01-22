@@ -194,9 +194,6 @@ void TCPNode::run(){
 	}
 }
 
-void TCPNode::peg(Node *other){
-	ERROR("TCP is an output node! it can not be pegged.");
-}
 
 void TCPNode::close(){
 	char tmp[SOCKET_BUF_SIZE];

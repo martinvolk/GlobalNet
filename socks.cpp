@@ -68,8 +68,7 @@ VSL::VSOCKET SocksService::get_socket_from_cache(const char *ip){
 	Cache::iterator it = cache.find(string(ip));
 	if(it == cache.end()) return 0;
 	
-	LOG("SOCKS: cache: trying to get a socket for: "<<ip<<" ("<<(*it).second.size()<<")");
-	
+	// this function simultaneously clears invalid or disconnected sockets from the cache
 	while((*it).second.size()){
 		map<VSL::VSOCKET, CachePost>::iterator p = (*it).second.begin();
 		VSL::VSOCKET ret = (*p).first;
@@ -77,7 +76,6 @@ VSL::VSOCKET SocksService::get_socket_from_cache(const char *ip){
 		VSL::SOCKINFO info;
 		VSL::getsockinfo(ret, &info );
 		if(info.is_connected){
-			LOG("SOCKS: ||||||||||||||||||| found a socket for "<<ip);
 			return ret;
 		}
 		else{

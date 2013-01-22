@@ -136,9 +136,6 @@ int LinkNode::listen(const char *host, uint16_t port){
 	ERROR("[link] listen not implemented!");
 	return -1;
 }
-void LinkNode::peg(Node *other){
-	ERROR("[link] peg not implemented. It is not recommended to peg links.");
-}
 
 void LinkNode::close(){
 	if(!this->_output){

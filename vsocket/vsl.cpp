@@ -20,6 +20,13 @@ int VSLNode::connect(const char *hostname, uint16_t port){
 	// state to CON_STATE_ESTABLISHED. There is no direct way to check
 	// if connection was successful. Some kind of timeout will work better. 
 	this->state = CON_STATE_CONNECTING;
+	
+	// clear the data queue
+	BIO_flush(in_read);
+	BIO_reset(in_read);
+	BIO_flush(in_write);
+	BIO_reset(in_write);
+	
 	this->_output->connect(hostname, port);
 	
 	return 1;
@@ -129,25 +136,6 @@ int VSLNode::recvCommand(Packet *dst){
 	return 0;
 }
 
-/*** sets up this connection so that it's output is sent to "other"
-// instead of the default UDT socket. 
-***/
-
-void VSLNode::peg(Node *other){
-	// this function pegs the output of our SSL node as input to another node 
-	// we need to override the default function because we have a custom structure
-	
-	// close the udt connection and connect the output of the 
-	// ssl connection to the input of this peer 
-	Node *udt = this->_output->_output;
-	udt->close(); 
-	
-	// now bridge the end of the ssl connection with "other"
-	this->_output->_output = other;
-	other->_input = this->_output;
-}
-
-
 /**
 This function handles incoming packets received from _output node. 
 **/
@@ -162,6 +150,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// end on the relay has disconnected. Received on the client end. 
 	else if(packet.cmd.code == RELAY_DISCONNECT){
 		LOG("CON: relay: remote end disconnected!");
+		// we need to clean up the data previously received from the relay. 
 		this->state = state | CON_STATE_IDLE; 
 	}
 	// this one is sent as a request to make current node connect to a different host

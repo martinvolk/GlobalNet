@@ -12,14 +12,14 @@ Network::Peer::Peer(VSLNode *socket){
 	mu = new pthread_mutex_t();
 	worker = new pthread_t();
 	pthread_mutex_init(mu, 0);
-	//pthread_create(worker, 0, &_peer_worker, this);
+	pthread_create(worker, 0, &_peer_worker, this);
 }
 
 Network::Peer::~Peer(){
 	LOCK(*mu, 0);
 	if(this->socket) delete socket;
-	UNLOCK(*mu, 0);
 	running = false;
+	UNLOCK(*mu, 0);
 	void *ret;
 	pthread_join(*this->worker, &ret);
 }
@@ -32,8 +32,11 @@ void Network::Peer::run(){
 	UNLOCK(*mu, 0);
 }
 void Network::Peer::loop(){
-	while(running) {
-		run();
+	while(true) {
+		LOCK(*mu, 0);
+		if(running) run();
+		else break;
+		UNLOCK(*mu, 0);
 		usleep(100);
 	}
 }
