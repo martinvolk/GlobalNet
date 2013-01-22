@@ -602,12 +602,12 @@ public:
 		int sendCommand(NodeMessage msg, const char *data, size_t size);
 		bool is_connected();
 		bool is_disconnected();
-		
+		void run();
 		PeerAddress address;
 		time_t last_peer_list_submit; 
 		PeerAddress listen_addr;
 	private:
-		void run();
+		
 		
 		bool running;
 		VSLNode *socket;
