@@ -38,6 +38,7 @@ string con_state_to_string(int state){
 }
 
 
+
 namespace VSL{
 	static Network *net;
 	static map<VSL::VSOCKET, Node*> sockets;

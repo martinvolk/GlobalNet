@@ -256,6 +256,7 @@ double milliseconds();
 int tokenize(const string& str,
                       const string& delimiters, vector<string> &tokens);
 string errorstring(int e);
+string hexencode(const char *data, size_t size);
 
 // a connection node
 class Node{
