@@ -91,7 +91,7 @@ this function should only be used to explicitly send data to the node.
 If the node has input connected then it will automatically also read
 data from it's input. 
 **/
-int VSLNode::send(const char *data, size_t size){
+int VSLNode::send(const char *data, size_t size, size_t minsize){
 	// calling "send" on peer connection means that we want to send some data
 	// therefore we write the data into an input buffer, and then later in the loop
 	// we convert this buffer to a CMD_DATA package and send it down the line. 
@@ -102,12 +102,13 @@ int VSLNode::send(const char *data, size_t size){
 /** 
 Reads a data from the decoded data queue
 **/ 
-int VSLNode::recv(char *data, size_t size){
+int VSLNode::recv(char *data, size_t size, size_t minsize){
 	// when data packets arrive, they are stripped of meta data and the data 
 	// is put in the read buffer to be read using this function by the _input node. 
 	// this buffer will only contain the contents of received DATA packets. 
 	if(this->state & CON_STATE_INVALID) return -1;
 	if(BIO_eof(this->in_read)) return 0;
+	if(BIO_ctrl_pending(this->in_read) < minsize) return 0;
 	return BIO_read(this->in_read, data, size);
 }
 
@@ -339,12 +340,13 @@ void VSLNode::close(){
 	this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
 }
-
+/*
 void VSLNode::set_output(Node *other){
 	delete this->_output->_output;
 	this->_output->_output = other;
 	other->set_input(this);
-}
+}*/
+/*
 void VSLNode::set_input(Node *other){ 
 	this->_input = other;
 	other->set_output(this);
@@ -354,7 +356,7 @@ Node* VSLNode::get_output(){
 }
 Node* VSLNode::get_input(){
 	return this->_input;
-}
+}*/
 
 VSLNode::VSLNode(Node *next){
 	if(!next){

@@ -82,6 +82,7 @@ namespace VSL{
 	VSL::VSOCKET socket(VSL::SOCKPROTO type){
 		const char *type_str;
 		if(type == VSL::SOCKET_TCP) type_str = "tcp";
+		else if(type == VSL::SOCKET_SOCKS) type_str = "socks";
 		else ERROR("TYPE NOT IMPLEMENTED!");
 		
 		Node *con = Node::createNode(type_str);
@@ -199,6 +200,7 @@ namespace VSL{
 	int close(VSOCKET sock){
 		map<VSOCKET, Node*>::iterator it = sockets.find(sock);
 		if(it != sockets.end()){
+			(*it).second->close();
 			delete (*it).second;
 			sockets.erase(it);
 			return 1;
@@ -219,13 +221,19 @@ namespace VSL{
 		info->is_connected = (n->state & CON_STATE_CONNECTED) != 0;
 		return 0;
 	}
-	
+	bool getsockopt(VSOCKET sock, const string &option, string &dst){
+		Node *n = _find_socket(sock);
+		if(n){
+			return n->get_option(option, dst);
+		}
+		return false;
+	}
 	void shutdown(){
 		delete net;
 	}
 	
 	void print_stats(int socket){
-		uint nc = 0, nl = 0, np = 0;
+		uint np = 0;
 		for(list<Network::Peer*>::iterator it = net->peers.begin();
 				it != net->peers.end(); it++ ){
 			Network::Peer *peer = (*it);
@@ -233,5 +241,11 @@ namespace VSL{
 			np++;
 		}
 		SEND_SOCK(socket, "Total: "<<np<<" peers.");
+	}
+	
+	string to_string(int value){
+		stringstream ss;
+		ss<<value;
+		return ss.str();
 	}
 }

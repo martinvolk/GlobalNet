@@ -23,11 +23,11 @@ int BridgeNode::connect(const char *hostname, uint16_t port){
 	return -1;
 }
 
-int BridgeNode::send(const char *data, size_t size){
+int BridgeNode::send(const char *data, size_t size, size_t minsize){
 	ERROR("CON_send not implemented!");
 	return -1;
 }
-int BridgeNode::recv(char *data, size_t size){
+int BridgeNode::recv(char *data, size_t size, size_t minsize){
 	// recv will be called by both of our nodes usually but we will handle 
 	// the data flow in the main loop.. 
 	return -1;

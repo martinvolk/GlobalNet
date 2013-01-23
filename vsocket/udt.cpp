@@ -106,7 +106,8 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	freeaddrinfo(peer);
 	
 	// set non blocking
-	UDT::setsockopt(client, 0, UDT_RCVSYN, new bool(false), sizeof(bool));
+	bool opt = false;
+	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
 	LOG("[udt] connected to "<<hostname<<":"<<port);
 	
@@ -118,10 +119,11 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	return 1;
 }
 
-int UDTNode::send(const char *data, size_t size){
+int UDTNode::send(const char *data, size_t size, size_t minsize){
 	return BIO_write(this->write_buf, data, size);
 }
-int UDTNode::recv(char *data, size_t size){
+int UDTNode::recv(char *data, size_t size, size_t minsize){
+	if(BIO_ctrl_pending(read_buf) < minsize) return 0;
 	return BIO_read(this->read_buf, data, size);
 }
 
@@ -198,7 +200,8 @@ int UDTNode::listen(const char *host, uint16_t port){
 	}
 	
 	// set socket as non blocking
-	UDT::setsockopt(socket, 0, UDT_RCVSYN, new bool(false), sizeof(bool));
+	bool opt = false;
+	UDT::setsockopt(socket, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
 	LOG("[udt] peer listening on port " << port << " for incoming connections.");
 	
@@ -213,7 +216,9 @@ int UDTNode::listen(const char *host, uint16_t port){
 void UDTNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
-		
+	
+	this->state = CON_STATE_DISCONNECTED;
+	
 	while(!BIO_eof(this->write_buf)){
 		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
 			UDT::send(this->socket, tmp, rc, 0);
@@ -221,7 +226,6 @@ void UDTNode::close(){
 	}
 	
 	UDT::close(this->socket);
-	this->state = CON_STATE_DISCONNECTED;
 	
 	LOG("UDT: disconnected!");
 }

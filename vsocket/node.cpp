@@ -19,11 +19,11 @@ int Node::connect(const char *hostname, uint16_t port){
 	return -1;
 }
 
-int Node::send(const char *data, size_t size){
+int Node::send(const char *data, size_t size, size_t minsize){
 	ERROR("CON_send not implemented!");
 	return -1;
 }
-int Node::recv(char *data, size_t size){
+int Node::recv(char *data, size_t size, size_t minsize){
 	ERROR("CON_recv not implemented!");
 	return -1;
 }
@@ -72,6 +72,9 @@ Node *Node::createNode(const char *name){
 	else if(strcmp(name, "ssl")==0){
 		return new SSLNode();
 	}
+	else if(strcmp(name, "socks")==0){
+		return new SocksNode();
+	}
 	else{
 		ERROR("Unknown socket type '"<<name<<"'");
 	}
@@ -112,25 +115,43 @@ Node* Node::get_output(){
 Node* Node::get_input(){
 	return this->_input;
 }
-	
+
+void Node::set_option(const string &opt, const string &val){
+	options[opt] = val;
+}
+
+bool Node::get_option(const string &opt, string &res){
+	if(options.find(opt) != options.end()){
+		res = options[opt];
+		return true;
+	}
+	return false;
+}
+
+set<long> deleted;
 Node::~Node(){
-	//LOG("NODE: deleting "<<this->host<<":"<<this->port);
+	LOG("NODE: deleting "<<this<<": "<<this->host<<":"<<this->port);
+	if(deleted.find((long)this) != deleted.end()){
+		cout<<"DOUBLE FREE!"<<endl;
+	}
+	deleted.insert((long)this);
+	this->state = CON_STATE_UNINITIALIZED;
 	
-	BIO_free(this->read_buf);
-	BIO_free(this->write_buf);
-	BIO_free(this->in_read);
-	BIO_free(this->in_write);
+	if(read_buf) BIO_free(this->read_buf);
+	if(write_buf) BIO_free(this->write_buf);
+	if(in_read) BIO_free(this->in_read);
+	if(in_write) BIO_free(this->in_write);
 	
 	read_buf = write_buf = in_read = in_write = 0;
 	
-	if(this->_output){
+	if(this->_output && this->_output != this){
 		if(this->_output->_input == this)
 			this->_output->_input = 0;
 		if(this->_output->_output == this)
 			this->_output->_output = 0;
 		delete _output;
 	}
-	if(this->_input){
+	if(this->_input && this->_input != this){
 		if(this->_input->_input == this)
 			this->_input->_input = 0;
 		if(this->_input->_output == this)
@@ -141,5 +162,4 @@ Node::~Node(){
 	this->_output = 0;
 	this->_input = 0;
 	
-	this->state = CON_STATE_UNINITIALIZED;
 }

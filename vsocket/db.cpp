@@ -52,6 +52,7 @@ static void *_db_worker(void *data){
 
 PeerDatabase::PeerDatabase(){
 	running = true;
+	pthread_mutex_init(&mu, 0);
 	pthread_create(&worker, 0, &_db_worker, this);
 }
 
@@ -65,9 +66,11 @@ PeerDatabase::~PeerDatabase(){
 void PeerDatabase::insert(const Record &_data){
 	LOCK(mu,0);
 	
+//#ifndef DEBUG
 	if(blocked.find(_data.peer.ip) != blocked.end())
 		return;
-		
+//#endif
+
 	Record data = _data;
 	if(data.peer.ip.compare("") == 0){
 		LOG("PDB: skipping peer: ip is null");
@@ -78,10 +81,12 @@ void PeerDatabase::insert(const Record &_data){
 		LOG("PDB: skipping peer: ip same as hub!");
 		return;
 	}
+//#ifndef DEBUG
 	if(data.peer.is_local()){
 		//LOG("PDB: skipping peer because it's a local address!");
 		return;
 	}
+//#endif
 	data.last_update = time(0);
 	//LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
 	this->quarantine[data.hash().hex()] = data;
@@ -162,51 +167,57 @@ void PeerDatabase::from_string(const string &peers){
 }
 
 void PeerDatabase::loop(){
-	
+	time_t timer1 = 0, timer2 = 0;
 	
 	while(running){
 		{
 			// test peers that are in quarantine and add them to the database if everything checks out. 
 			vector<Record> tmp;
 			
-			LOCK(mu,0);
-			for(map<string, Record>::iterator it = this->quarantine.begin(); 
-					it != this->quarantine.end(); it++) tmp.push_back((*it).second); 
-			quarantine.clear();
-			UNLOCK(mu,0);
-			
-			for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
-				bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+			if(time(0) - timer1 > 5){
+				LOCK(mu,0);
+				for(map<string, Record>::iterator it = this->quarantine.begin(); 
+						it != this->quarantine.end(); it++) tmp.push_back((*it).second); 
+				quarantine.clear();
+				UNLOCK(mu,0);
 				
-				// add the peer to the database
-				if(reachable){
-					LOCK(mu,1);
-					db[(*it).hash().hex()] = (*it);
-					UNLOCK(mu,1);
+				for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
+					bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+					
+					// add the peer to the database
+					if(reachable){
+						LOCK(mu,1);
+						db[(*it).hash().hex()] = (*it);
+						UNLOCK(mu,1);
+					}
+					if(!running) break;
 				}
-				sleep(5);
+				timer1 = time(0);
 			}
 			
 			// check peers that are in the database and remove the ones that are unreachable. 
-			tmp.clear();
-			LOCK(mu,2);
-			for(map<string, Record>::iterator it = this->db.begin(); 
-					it != this->db.end(); it++) tmp.push_back((*it).second); 
-			UNLOCK(mu,2);
-			
-			for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
-				// try to establish a connection to the peer. 
-				bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+			if(time(0) - timer2 > 5){
+				tmp.clear();
+				LOCK(mu,2);
+				for(map<string, Record>::iterator it = this->db.begin(); 
+						it != this->db.end(); it++) tmp.push_back((*it).second); 
+				UNLOCK(mu,2);
 				
-				// remove if unreachable and save in offline peers so that we can later reconnect
-				if(!reachable){
-					LOCK(mu,1);
-					LOG("PDB: removing unreachable host: "<<(*it).peer.ip<<":"<<(*it).peer.port);
-					db.erase(db.find((*it).hash().hex()));
-					offline[(*it).hash().hex()] = (*it);
-					UNLOCK(mu,1);
+				for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
+					// try to establish a connection to the peer. 
+					bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+					
+					// remove if unreachable and save in offline peers so that we can later reconnect
+					if(!reachable){
+						LOCK(mu,1);
+						LOG("PDB: removing unreachable host: "<<(*it).peer.ip<<":"<<(*it).peer.port);
+						db.erase(db.find((*it).hash().hex()));
+						offline[(*it).hash().hex()] = (*it);
+						UNLOCK(mu,1);
+					}
+					if(!running) break;
 				}
-				sleep(5);
+				timer2 = time(0);
 			}
 			
 			// check all offline peers and move the ones that are reachable back into the database
@@ -232,7 +243,7 @@ void PeerDatabase::loop(){
 				sleep(3);
 			}*/
 		}
-		sleep(5);
+		usleep(1000);
 	}
 	LOG("PDB: main loop exiting..");
 }

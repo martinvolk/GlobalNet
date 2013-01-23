@@ -10,16 +10,20 @@ Free software. Part of the GlobalNet project.
 
 #include <stdint.h>
 #include <cstring>
+#include <string>
 
 namespace VSL {
 	typedef struct { unsigned char hash[20]; } SHA1Hash;
 	typedef int VSOCKET;
 	
+	using namespace std;
+
 	#define VSOCKET_DEFAULT_PEER_PORT 9000
 	
 	typedef enum{
 		SOCKET_INTERNAL,
-		SOCKET_TCP
+		SOCKET_TCP, 
+		SOCKET_SOCKS
 	}SOCKPROTO;
 	
 	struct sockaddr_t{
@@ -39,6 +43,8 @@ namespace VSL {
 		SocketState state;
 		bool is_connected;
 	};
+	
+	string to_string( int value );
 	
 	/** initializes the virtual sockets subsystem. 
 	Private and public keys specifies the keys which will be used as
@@ -87,6 +93,7 @@ namespace VSL {
 	void run();
 	
 	int getsockinfo(VSOCKET sock, SOCKINFO *info);
+	bool getsockopt(VSOCKET sock, const string &option, string &dst);
 	
 	int close(VSOCKET socket);
 	

@@ -80,8 +80,8 @@ public:
 	
 	// on client side 
 	VSL::VSOCKET server_link;  // link through which we can reach the other end
-	int local_socket; // socket of the local connections
-	vector< pair<int, VSL::VSOCKET> > local_clients;
+	VSL::VSOCKET local_socket; // socket of the local connections
+	vector< pair<VSL::VSOCKET, VSL::VSOCKET> > local_clients;
 	map<string, void*> _cache;
 	
 	// listening socket
@@ -93,6 +93,7 @@ public:
 
 class SocksService : public Service{
 public:
+	SocksService();
 	~SocksService();
 	virtual int listen(const char *host, uint16_t port);
 	virtual void run();

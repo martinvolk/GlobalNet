@@ -1,14 +1,15 @@
 #include "local.h"
-
+/*
 static void *_peer_worker(void *data){
 	Network::Peer *self = (Network::Peer*)data;
 	self->loop();
 	return 0;
 }
-
+*/
 Network::Peer::Peer(VSLNode *socket){
 	this->socket = socket;
 	running = true;
+	last_peer_list_submit = 0;
 	mu = new pthread_mutex_t();
 	worker = new pthread_t();
 	pthread_mutex_init(mu, 0);
@@ -20,8 +21,8 @@ Network::Peer::~Peer(){
 	if(this->socket) delete socket;
 	running = false;
 	UNLOCK(*mu, 0);
-	void *ret;
-	pthread_join(*this->worker, &ret);
+	//void *ret;
+	//pthread_join(*this->worker, &ret);
 }
 
 void Network::Peer::run(){

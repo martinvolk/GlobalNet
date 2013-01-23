@@ -80,11 +80,12 @@ void SSLNode::_init_ssl_socket(bool server_socket){
 	sock->server_socket = server_socket;
 }
 
-int SSLNode::recv(char *data, size_t size){
+int SSLNode::recv(char *data, size_t size, size_t minsize){
+	if(BIO_ctrl_pending(this->in_read) < minsize) return 0;
 	return BIO_read(this->in_read, data, size);
 }
 
-int SSLNode::send(const char *data, size_t size){
+int SSLNode::send(const char *data, size_t size, size_t minsize){
 	return BIO_write(this->in_write, data, size);
 }
 
@@ -161,7 +162,7 @@ int SSLNode::listen(const char *host, uint16_t port){
 
 void SSLNode::run(){
 	char tmp[SOCKET_BUF_SIZE];
-	int rc;
+	int rc = 0;
 	
 	if(!this->_output){
 		LOG("[warning] no backend set for the SSL connection!");
@@ -291,17 +292,15 @@ void SSLNode::close(){
 	LOG("SSL: disconnected!");
 }
 SSLNode::SSLNode(){
+	this->state = CON_STATE_INITIALIZED;
+	
 	this->ssl = 0;
 	this->ctx = 0;
 	
 	this->type = NODE_SSL;
-	
-	this->state = CON_STATE_INITIALIZED;
 }
 
 SSLNode::~SSLNode(){
-	//LOG("SSL: deleting "<<this->host<<":"<<this->port);
-	
 	if(!(this->state & CON_STATE_INVALID))
 		this->close();
 	
@@ -313,4 +312,6 @@ SSLNode::~SSLNode(){
 			SSL_CTX_free(this->ctx);
 	}
 	read_buf = write_buf = 0; // freed by ssl
+	
+	LOG("SSL: deleted "<<this->host<<":"<<this->port);
 }

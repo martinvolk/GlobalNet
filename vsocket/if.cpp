@@ -87,7 +87,7 @@ string inet_get_host_ip(const string &hostname){
 	const hostent* host_info = gethostbyname(hostname.c_str()) ;
 	if (host_info) {
 		const in_addr* address = (in_addr*)host_info->h_addr_list[0] ;
-		const char *ip = inet_ntoa(*address);
+		string ip = inet_ntoa(*address);
 		return ip;
 	}
 	return "0.0.0.0";

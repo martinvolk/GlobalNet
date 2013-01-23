@@ -51,8 +51,14 @@ VSL::VSOCKET Service::accept(){
 Service *socks;
 Service *console;
 
+static bool shutting_down = false;
 void signal_handler(int sig){
+	if(shutting_down) {
+		LOG("SHUTDOWN ALREADY IN PROGRESS!");
+		return;
+	}
 	LOG("SHUTTING DOWN!");
+	shutting_down = true;
 	VSL::shutdown();
 	exit(1);
 }
@@ -155,6 +161,7 @@ int main(int argc, char* argv[])
 	delete socks;
 	delete console;
 	
+	shutting_down = true;
 	VSL::shutdown();
 	
 	return 1;

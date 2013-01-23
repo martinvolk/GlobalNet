@@ -36,6 +36,7 @@ Free software. Part of the GlobalNet project.
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <string>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -51,6 +52,8 @@ Free software. Part of the GlobalNet project.
 
 #include <udt.h>
 #include <math.h>
+
+#include "vsocket.h"
 
 using namespace std;
 
@@ -258,6 +261,7 @@ int tokenize(const string& str,
 string errorstring(int e);
 string hexencode(const char *data, size_t size);
 
+
 // a connection node
 class Node{
 public:
@@ -296,8 +300,8 @@ public:
 	
 	// virtual functions
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -310,7 +314,11 @@ public:
 	virtual Node* get_output();
 	virtual Node* get_input();
 	
+	void set_option(const string &opt, const string &val);
+	bool get_option(const string &opt, string &res);
 private: 
+	map<string, string> options;
+	
 	// guard against assignments (we would need to implement a proper copy constructor later)
 	Node &operator=(const Node &other){ return *this; }
 }; 
@@ -318,22 +326,22 @@ private:
 class VSLNode : public Node{
 public:
 	VSLNode(Node *next);
-	~VSLNode();
+	virtual ~VSLNode();
 	
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
-	
+	/*
 	virtual void set_output(Node *other);
 	virtual void set_input(Node *other);
 	virtual Node* get_output();
-	virtual Node* get_input();
+	virtual Node* get_input();*/
 private:
 	void _handle_packet(const Packet &packet);
 };
@@ -341,11 +349,11 @@ private:
 class SSLNode : public Node{
 public:
 	SSLNode();
-	~SSLNode();
+	virtual ~SSLNode();
 	
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -362,11 +370,11 @@ private:
 class TCPNode : public Node{
 public:
 	TCPNode();
-	~TCPNode();
+	virtual ~TCPNode();
 
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -381,11 +389,11 @@ private:
 class UDTNode : public Node{
 public:
 	UDTNode();
-	~UDTNode();
+	virtual ~UDTNode();
 	
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -401,8 +409,8 @@ public:
 	BridgeNode();
 	
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -412,14 +420,51 @@ public:
 	virtual void close();
 };
 
+class SocksNode : public Node{
+public:
+	SocksNode();
+	virtual ~SocksNode();
+	
+	struct socks_t{
+		unsigned char version;
+		unsigned char code;
+		unsigned char reserved;
+		unsigned char atype;
+		char data[256];
+	};
+
+	struct socks_state_t{
+		int state;
+		socks_t socks;
+		string host;
+		uint16_t port;
+		time_t last_event; 
+	};
+	
+	//virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const char *host, uint16_t port);
+	virtual Node* accept();
+	virtual void run();
+	//virtual void peg(Node *other);
+	virtual void close();
+private: 
+	TCPNode *listen_socket;
+	list< pair<socks_state_t, Node*> > accept_queue;
+	list< pair<time_t, Node*> > accepted; 
+};
+
 class LinkNode : public Node{
 public:
 	LinkNode();
-	~LinkNode();
+	virtual ~LinkNode();
 	
 	virtual int connect(const char *host, uint16_t port);
-	virtual int send(const char *data, size_t size);
-	virtual int recv(char *data, size_t size);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);

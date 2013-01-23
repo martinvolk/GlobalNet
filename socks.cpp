@@ -20,7 +20,6 @@ static const char *get_socket_ip(int socket){
 	socklen_t len;
 	struct sockaddr_storage addr;
 	char ipstr[INET6_ADDRSTRLEN];
-	int port;
 
 	len = sizeof addr;
 	getpeername(socket, (struct sockaddr*)&addr, &len);
@@ -28,25 +27,29 @@ static const char *get_socket_ip(int socket){
 	// deal with both IPv4 and IPv6:
 	if (addr.ss_family == AF_INET) {
 			struct sockaddr_in *s = (struct sockaddr_in *)&addr;
-			port = ntohs(s->sin_port);
+			int port = ntohs(s->sin_port);
 			inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
 			return inet_ntoa(s->sin_addr);
 	} else { // AF_INET6
 			struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
-			port = ntohs(s->sin6_port);
+			int port = ntohs(s->sin6_port);
 			inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
 			return "";
 	}
 	return "";
 }
 
+SocksService::SocksService(){
+	local_socket = VSL::socket(VSL::SOCKET_SOCKS);
+}
 SocksService::~SocksService(){
-	vector< pair<int, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
 	while(it != this->local_clients.end()){
 		VSL::close((*it).second);
-		::close((*it).first);
+		VSL::close((*it).first);
 		it++;
 	}
+	VSL::close(local_socket);
 }
 
 void SocksService::put_socket_to_cache(const char *ip, VSL::VSOCKET socket){
@@ -86,6 +89,26 @@ VSL::VSOCKET SocksService::get_socket_from_cache(const char *ip){
 }
 
 void SocksService::run(){
+	VSL::VSOCKET client; 
+	if((client = VSL::accept(this->local_socket))>0){
+		VSL::VSOCKET link = 0; //get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
+		string host, port;
+		VSL::getsockopt(client, "socks_request_host", host);
+		VSL::getsockopt(client, "socks_request_port", port);
+		if(!link)
+			link = VSL::tunnel((host+":"+port).c_str()); 
+		else {
+			LOG("SOCKS: using previously opened socket from cache!");
+			VSL::connect(link, (string("tcp:")+host+":"+port).c_str(), 0);
+		}
+		if(link > 0){
+			this->local_clients.push_back(pair<VSL::VSOCKET, VSL::VSOCKET>(client, link));
+		}
+		else {
+			VSL::close(client);
+		}
+	}
+	/*
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
 	char buf[SOCKET_BUF_SIZE];
@@ -153,7 +176,7 @@ void SocksService::run(){
 		stringstream ss;
 		ss<<host<<":"<<port;
 		
-		VSL::VSOCKET link = get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
+		VSL::VSOCKET link = 0; //get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
 		if(!link)
 			link = VSL::tunnel(ss.str().c_str()); 
 		else {
@@ -181,30 +204,32 @@ void SocksService::run(){
 			close(z);
 		}
 	}
-	
+	*/
 	/// process data from local clients
-	vector< pair<int, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	char buf[SOCKET_BUF_SIZE];
 	while(it != this->local_clients.end()){
-		int sock = (*it).first;
+		VSL::VSOCKET sock = (*it).first;
 		VSL::VSOCKET link = (*it).second;
 		VSL::SOCKINFO info;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
 		VSL::getsockinfo(link, &info);
 		
-		if((rs = recv(sock, buf, SOCKET_BUF_SIZE, 0)) > 0){
+		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
 			VSL::send(link, buf, rs);
 		} 
 		if(rs == 0 || info.state == VSL::VSOCKET_IDLE){ // client disconnected
 			LOG("SOCKS: session has ended!");
-			put_socket_to_cache(get_socket_ip(sock), link);
-			close(sock);
+			//put_socket_to_cache(get_socket_ip(sock), link);
+			VSL::close(link);
+			VSL::close(sock);
 			it = this->local_clients.erase(it);
 			continue;
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
 			LOG("SOCKS: sending "<<rs<<" bytes to socks connection!");
-			if((send(sock, buf, rs, MSG_NOSIGNAL))<0){
+			if((VSL::send(sock, buf, rs))<0){
 				
 			}
 		} 
@@ -212,15 +237,21 @@ void SocksService::run(){
 			LOG("SOCKS: peer end disconnected.");
 			VSL::close(link);
 			it = local_clients.erase(it);
-			close(sock);
+			VSL::close(sock);
 			continue;
 		}
 		it++;
-		// try receiving data
 	}
 }
 
 int SocksService::listen(const char *host, uint16_t port){
+	if(VSL::listen(this->local_socket, (string(host)+":"+VSL::to_string(port)).c_str())>0){
+		LOG("SOCKS: listening on port "<<port);
+		return 1;
+	}
+	LOG("SOCKS: failed to listen on "<<host<<":"<<port);
+	return -1;
+	/*
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -234,9 +265,6 @@ int SocksService::listen(const char *host, uint16_t port){
 		goto close;
 	} 
 
-	/* 
-	* Bind the server address  
-	*/  
 	len_inet = sizeof adr_srvr;  
 	bzero((char *) &adr_srvr, sizeof(adr_srvr));
 	adr_srvr.sin_family = AF_INET;
@@ -249,9 +277,6 @@ int SocksService::listen(const char *host, uint16_t port){
 		goto close;
 	} 
 
-	/* 
-	* Set listen mode  
-	*/  
 	if (::listen(s, 10) == -1 ) {
 		SOCK_ERROR("listen(2)");  
 		goto close;
@@ -269,6 +294,7 @@ int SocksService::listen(const char *host, uint16_t port){
 close:
 	close(s);
 	return 0;
+	*/
 }
 
 

@@ -68,7 +68,6 @@ Node *TCPNode::accept(){
 		return 0;
 	}
 	if((z = accept4(this->socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
-		LOG("[server socket] client connected!");
 		
 		con = new TCPNode();
 		//NET_createConnection(this->net, "tcp", false);
@@ -78,15 +77,19 @@ Node *TCPNode::accept(){
 		con->host = host;
 		con->port = atoi(clientservice);
 		
+		LOG("TCP: incoming connection from "<<host<<":"<<clientservice);
+		
 		con->socket = z;
 		con->state = CON_STATE_ESTABLISHED;
 		
 		int val = fcntl(z, F_GETFL, 0);
 		fcntl(z, F_SETFL, val | O_NONBLOCK);
+		
+		return con;
 	} else if(errno != EAGAIN) {
 		//perror("accept");
 	}
-	return con;
+	return 0;
 }
 
 int TCPNode::listen(const char *host, uint16_t port){
@@ -147,11 +150,12 @@ close:
 	return 0;
 }
 
-int TCPNode::recv(char *data, size_t size){
+int TCPNode::recv(char *data, size_t size, size_t minsize){
+	if(BIO_ctrl_pending(this->read_buf) < minsize) return 0;
 	return BIO_read(this->read_buf, data, size);
 }
 
-int TCPNode::send(const char *data, size_t size){
+int TCPNode::send(const char *data, size_t size, size_t minsize){
 	return BIO_write(this->write_buf, data, size);
 }
 
@@ -210,6 +214,8 @@ void TCPNode::close(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
+	this->state = CON_STATE_DISCONNECTED;
+	
 	while(!BIO_eof(this->write_buf)){
 		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
 			::send(this->socket, tmp, rc, MSG_NOSIGNAL);
@@ -217,7 +223,6 @@ void TCPNode::close(){
 	}
 	::close(this->socket);
 	LOG("TCP: disconnected!");
-	this->state = CON_STATE_DISCONNECTED;
 }
 
 TCPNode::TCPNode(){

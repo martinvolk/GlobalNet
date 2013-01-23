@@ -68,7 +68,7 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 	return 1;
 }
 
-int LinkNode::send(const char *data, size_t size){
+int LinkNode::send(const char *data, size_t size, size_t minsize){
 	// we place the data in the link buffer and send it out later in the 
 	// main loop. 
 	//LOG("LINK: send(): "<<size<<" bytes!");
@@ -76,9 +76,9 @@ int LinkNode::send(const char *data, size_t size){
 	return BIO_write(this->write_buf, data, size);
 }
 
-int LinkNode::recv(char *data, size_t size){
+int LinkNode::recv(char *data, size_t size, size_t minsize){
 	if(this->state & CON_STATE_INVALID) return -1;
-	if(BIO_eof(this->read_buf)) return 0;
+	if(BIO_eof(this->read_buf) || BIO_ctrl_pending(read_buf) < minsize) return 0;
 	return BIO_read(this->read_buf, data, size);
 }
 
@@ -138,6 +138,8 @@ int LinkNode::listen(const char *host, uint16_t port){
 }
 
 void LinkNode::close(){
+	this->state = CON_STATE_WAIT_CLOSE;
+	
 	if(!this->_output){
 		this->state = CON_STATE_DISCONNECTED;
 		return;
@@ -151,7 +153,6 @@ void LinkNode::close(){
 		}
 	}
 	this->_output->close();
-	this->state = CON_STATE_WAIT_CLOSE;
 }
 
 LinkNode::LinkNode(){ 
@@ -160,5 +161,5 @@ LinkNode::LinkNode(){
 }
 
 LinkNode::~LinkNode(){
-	//this->close();
+	this->close();
 }

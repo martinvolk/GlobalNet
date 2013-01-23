@@ -78,7 +78,7 @@ m_iRcvBufSize(65536)
 
 CChannel::CChannel(const int& version):
 m_iIPversion(version),
-m_iSocket(),
+m_iSocket(0),
 m_iSndBufSize(65536),
 m_iRcvBufSize(65536)
 {

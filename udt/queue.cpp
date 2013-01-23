@@ -80,6 +80,7 @@ CUnitQueue::~CUnitQueue()
          p = p->m_pNext;
       delete q;
    }
+   delete [] m_pQEntry;
 }
 
 int CUnitQueue::init(const int& size, const int& mss, const int& version)
@@ -502,6 +503,7 @@ void CSndQueue::init(const CChannel* c, const CTimer* t)
          m_WorkerThread = 0;
          throw CUDTException(3, 1);
       }
+      pthread_detach(m_WorkerThread);
    #else
       DWORD threadID;
       m_WorkerThread = CreateThread(NULL, 0, CSndQueue::worker, this, 0, &threadID);
@@ -958,6 +960,7 @@ void CRcvQueue::init(const int& qsize, const int& payload, const int& version, c
          m_WorkerThread = 0;
          throw CUDTException(3, 1);
       }
+      pthread_detach(m_WorkerThread);
    #else
       DWORD threadID;
       m_WorkerThread = CreateThread(NULL, 0, CRcvQueue::worker, this, 0, &threadID);
