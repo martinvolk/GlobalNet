@@ -97,7 +97,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	}
 	// set non blocking
 	bool opt = false;
-	//UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
+	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
 	// connect to the server, implict bind
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))

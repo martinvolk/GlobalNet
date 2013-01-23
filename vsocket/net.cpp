@@ -374,6 +374,7 @@ void Network::run() {
 		if((rc = (*it)->recv(tmp, sizeof(tmp), 0))>0){
 			RRTable::iterator rr = rt_reverse.find((*it));
 			if(rr != rt_reverse.end()){
+				LOG("NET: sending "<<rc<<" bytes to peer "<<(*rr).second.to->host<<" - "<<(*rr).second.dst_hash);
 				Packet pack;
 				pack.cmd.code = CMD_DATA;
 				pack.cmd.size = rc;

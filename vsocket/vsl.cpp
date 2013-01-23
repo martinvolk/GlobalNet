@@ -158,12 +158,6 @@ void VSLNode::_handle_packet(const Packet &packet){
 		// we need to clean up the data previously received from the relay. 
 		this->state = state | CON_STATE_IDLE; 
 	}
-	// this one is sent as a request to make current node connect to a different host
-	// the request will originate from _output and the new connection should be 
-	// connected to _input. Then all data sent by the input will be sent to the output. 
-	else if(packet.cmd.code == RELAY_CONNECT){
-		
-	}
 	// this one is received when a relay has successfully connected 
 	// the message is sent by the BRIDGE node to it's _input once it's 
 	// output goes from CONNECTING to CONNECTED. It means that the other

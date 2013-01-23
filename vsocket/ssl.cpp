@@ -101,18 +101,8 @@ int SSLNode::connect(const char *host, uint16_t port){
 		// initialize ssl client method 
 		_init_ssl_socket(false);
 		
-		if(this->_output->type == NODE_PEER){
-			LOG("[ssl] sending relay connect to "<<this->_output->host<<":"<<this->_output->port);
-		
-			stringstream ss;
-			ss<<"udt:"<<host<<":"<<port;
-			this->_output->sendCommand(RELAY_CONNECT, ss.str().c_str(), ss.str().length());
-			return 1;
-		}
-		else {
-			this->_output->connect(host, port);
-			return 1;
-		}
+		this->_output->connect(host, port);
+		return 1;
 	}
 	return -1;
 }
