@@ -47,7 +47,6 @@ Node *UDTNode::accept(){
 int UDTNode::connect(const char *hostname, uint16_t port){
 	struct addrinfo hints, *local, *peer;
 	
-	
 	memset(&hints, 0, sizeof(struct addrinfo));
 
 	hints.ai_flags = 0;
@@ -55,7 +54,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	hints.ai_socktype = SOCK_STREAM;
 
 	stringstream ss;
-	ss << SERV_LISTEN_PORT;
+	ss << CLIENT_BIND_PORT;
 	if (0 != getaddrinfo(NULL, ss.str().c_str(), &hints, &local))
 	{
 		cout << "incorrect network address.\n" << endl;
@@ -63,6 +62,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	}
 
 	UDTSOCKET client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
+	
 	
 	// UDT Options
 	//UDT::setsockopt(client, 0, UDT_CC, new CCCFactory<CUDPBlast>, sizeof(CCCFactory<CUDPBlast>));
@@ -77,14 +77,14 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	#endif
 
 	// for rendezvous connection, enable the code below
-	/*
-	UDT::setsockopt(client, 0, UDT_RENDEZVOUS, new bool(true), sizeof(bool));
+	
+	//UDT::setsockopt(client, 0, UDT_RENDEZVOUS, new bool(true), sizeof(bool));
 	if (UDT::ERROR == UDT::bind(client, local->ai_addr, local->ai_addrlen))
 	{
 		cout << "bind: " << UDT::getlasterror().getErrorMessage() << endl;
 		return 0;
 	}
-	*/
+	
 
 	freeaddrinfo(local);
 	
@@ -97,7 +97,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 	}
 	// set non blocking
 	bool opt = false;
-	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
+	//UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
 	// connect to the server, implict bind
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
@@ -105,7 +105,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 		ERROR("UDT: connect: " << UDT::getlasterror().getErrorMessage());
 		return 0;
 	}
-		
+	exit(0);
 	freeaddrinfo(peer);
 	
 	this->socket = client; 
