@@ -106,14 +106,14 @@ Peer *Network::createPeer(){
 	return node;
 }
 */
-Network::Peer *Network::getRandomPeer(){
+Peer *Network::getRandomPeer(){
 	int r = rand() % peers.size();
 	LOG("=================> USING PEER "<<r);
 	if(!peers.size()) return 0;
 	int c=0;
-	for(list<Peer*>::iterator it = peers.begin();
+	for(PeerList::iterator it = peers.begin();
 			it != peers.end(); it++){
-		if(r == c) return (*it);
+		if(r == c) return (*it).second;
 		c++;
 	}
 	return 0;
@@ -210,14 +210,15 @@ Network::Network(){
 }
 
 
-void Network::connect(const char *hostname, int port){
+VSLNode *Network::connect(const char *hostname, int port){
 	VSLNode *node = new VSLNode(0);
 	node->connect(hostname, port);
-	peers.push_back(new Peer(node));
+	peers[string(hostname)+":"+VSL::to_string(port)] = node;
 	PeerDatabase::Record r;
 	r.peer.ip = inet_get_ip(hostname);
 	r.peer.port = port;
 	peer_db.insert(r);
+	return node;
 }
 
 void Network::run() {
@@ -228,20 +229,20 @@ void Network::run() {
 	r.peer.port = this->server->port;
 	peer_db.insert(r);
 	
-	// monitor peers for replies
-	for(list<Peer*>::iterator it = peers.begin(); 
+	// receive packets from peers and route them to where they should go
+	for(PeerList::iterator it = peers.begin(); 
 			it != peers.end(); ){
-		Peer *p = (*it);
+		Peer *p = (*it).second;
 		Packet pack;
 		
 		// remove peers that have disconnected 
-		if(p->is_disconnected()){
+		if(p->state & CON_STATE_DISCONNECTED){
 			delete p;
 			peers.erase(it++);
 			continue;
 		}
 		p->run();
-		if(p->is_connected()){
+		if(p->state & CON_STATE_CONNECTED){
 			if(p->recvCommand(&pack)){
 				//LOG("NET: received command from "<<s->host<<":"<<s->port<<": "<<pack.cmd.code);
 				if(pack.cmd.code == CMD_PEER_LIST){
@@ -249,60 +250,179 @@ void Network::run() {
 					
 					peer_db.from_string(string(pack.data));
 				} 
-			}
-			// send some commands if it is time. 
-			if(p->last_peer_list_submit < time(0) - NET_PEER_LIST_INTERVAL){
-				LOG("NET: sending peer list to the peer.");
-				
-				// update the record of the current peer in the database 
-				PeerDatabase::Record r; 
-				// we add the peer to the database if he has provided a listen address
-				// the database will automatically check if it's valid later. 
-				if(p->listen_addr.is_valid()){
-					r.peer = p->listen_addr;
+				// a notificaton of a new wrapped connection 
+				if(pack.cmd.code == CMD_CONNECT){
+					// data contains hash that will be used to send and receive data 
+					string hash = pack.data;
+					VSLNode *peer = new VSLNode(0);
+					NodeAdapter *adapt = new NodeAdapter(peer);
+					adapt->host = hash;
+					adapt->port = 0;
+					
+					// add the adapter to routing table. 
+					RoutingTable::iterator it = rt.find(hash);
+					if(it != rt.end()){
+						delete (*it).second.to;
+					}
+					// this takes care of p -> adapter transfers. 
+					this->rt[hash] = RoutingEntry(p, hash, adapt);
+					// this takes care of adapter -> p transfers. 
+					this->rt_reverse[adapt] = RoutingEntry(adapt, hash, p);
+					// this makes sure that adapter is monitored for received data
+					connections.push_back(adapt);
+					// this makes sure the new virtual peer gets indexed and handled just like a normal peer. 
+					peers[hash] = peer;
 				}
-				else {
-					// peer does not have a dedicated listening socket. 
-					// we put the peer into database, but supply our own address as relay host
-					r.peer = PeerAddress(p->address.ip, CLIENT_BIND_PORT);
-					r.hub = PeerAddress(this->server->host, this->server->port);
+				// received a relay connect from a peer so we need to start a new connection and update our routing table. 
+				if(pack.cmd.code == RELAY_CONNECT){
+					// data should contain a string of format ID:PROTO:IP:PORT
+					char tmp[SOCKET_BUF_SIZE];
+					memcpy(tmp, pack.data, min((unsigned long)SOCKET_BUF_SIZE, (unsigned long)pack.cmd.size));
+					tmp[pack.cmd.size] = 0;
+					
+					string str = string(tmp);
+					vector<string> tokens;
+					tokenize(str, ":",tokens);
+					string hash, proto, host;
+					uint16_t port = 9000;
+					if(tokens.size() == 4){
+						hash = tokens[0];
+						proto = tokens[1];
+						host = tokens[2];
+						port = atoi(tokens[3].c_str());
+					} else {
+						ERROR("NET: malformed relay packet. Should contain ID:PROTO:IP:PORT");
+						continue; 
+					}
+					
+					// if it is a peer connection and we already are connected to 
+					// the peer then we use existing connection. 
+					
+					if(proto.compare("peer") == 0){
+						VSLNode *node = 0;
+						PeerList::iterator it = peers.find(host+":"+VSL::to_string(port));
+					
+						if(it != peers.end()){
+							LOG("NET: using existing connection to "<<host<<":"<<port);
+							node = (*it).second;
+						}
+						else {
+							LOG("NET: connecting to "<<host<<":"<<port);
+							node = connect(host.c_str(), port);
+						}
+						
+						stringstream ss;
+						ss<<time(0)<<rand();
+						SHA1Hash nodehash = SHA1Hash::compute(ss.str());
+						
+						// notify the peer that we have a new connection
+						node->sendCommand(CMD_CONNECT, nodehash.hex().c_str(), nodehash.hex().length());
+						
+						// associate the hash with node as from and our peer as to because 
+						// messages with this hash will be sent from "node"
+						// This indicates that all DATA packets tagged with HASH (which only we and node knows) 
+						// will be sent as DATA to "p"
+						this->rt[nodehash.hex()] = RoutingEntry(node, hash, p); 
+						this->rt[hash] = RoutingEntry(p, nodehash.hex(), node); 
+					}
+					else{
+						// otherwise we set up an ordinary node 
+						
+						INFO("NET: setting up relay connection to: "<<host<<":"<<port<<" for: "<<p->host<<":"<<p->port);
+						
+						Node *other = Node::createNode(proto.c_str());
+						other->connect(host.c_str(), port);
+						
+						this->connections.push_back(other);
+						
+						// insert an entry into the routing table 
+						this->rt[hash] = RoutingEntry(p, "", other);
+						this->rt_reverse[other] = RoutingEntry(other, hash, p);
+					}
 				}
-				this->peer_db.update(r);
-				
-				// send a peer list to the peer 
-				string peers = peer_db.to_string(25);
-				
-				p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length());
+				// handle data packets received from peers. 
+				// Usually these should be forwarded to another node that will handle them . 
+				if(pack.cmd.code == CMD_DATA){
+					// lookup where the data should be sent
+					RoutingTable::iterator it = this->rt.find(pack.cmd.hash.hex());
+					if(it != this->rt.end()){
+						// send it to the output (the encrypted end) of peer that is identified by the hash
+						if((*it).second.from == p){
+							pack.cmd.hash.from_hex_string((*it).second.dst_hash);
+							(*it).second.to->sendCommand(pack);
+						} else {
+							ERROR("NET: peer attempting to spoof an ID of DATA packet!");
+						}
+					}
+				}
+			} // recvCommand
+		}
+		it++;
+	} // loop peers
 	
-				p->last_peer_list_submit = time(0);
+	// read data from external connections and route it to the right peers
+	for(NodeList::iterator it = connections.begin(); it != connections.end(); ){
+		char tmp[SOCKET_BUF_SIZE];
+		int rc; 
+		
+		if((*it)->state & CON_STATE_DISCONNECTED){
+			delete (*it);
+			connections.erase(it++);
+			continue;
+		}
+		
+		if((rc = (*it)->recv(tmp, sizeof(tmp), 0))>0){
+			RRTable::iterator rr = rt_reverse.find((*it));
+			if(rr != rt_reverse.end()){
+				Packet pack;
+				pack.cmd.code = CMD_DATA;
+				pack.cmd.size = rc;
+				pack.cmd.hash.from_hex_string((*rr).second.dst_hash);
+				memcpy(pack.data, tmp, rc);
+				(*rr).second.to->sendCommand(pack);
 			}
 		}
 		it++;
 	}
-
-	
-	for(list<Peer*>::iterator it = peers.begin(); 
-			it != peers.end();){
-		Peer *p = (*it);
-		if(p->is_disconnected()){
-			delete p;
-			peers.erase(it++);
-			continue;
-		} 
-		it++;
+	// send some commands if it is time. 
+	if(this->last_peer_list_broadcast < time(0) - NET_PEER_LIST_INTERVAL){
+		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
+			LOG("NET: sending peer list to the peer.");
+			Peer *p = (*it).second;
+			// update the record of the current peer in the database 
+			PeerDatabase::Record r; 
+			// we add the peer to the database if he has provided a listen address
+			// the database will automatically check if it's valid later. 
+			PeerAddress adr = PeerAddress(p->host, CLIENT_BIND_PORT);
+			if(adr.is_valid()){
+				r.peer = adr;
+				this->peer_db.update(r);
+			}
+			else {
+				// peer does not have a dedicated listening socket. 
+				// we put the peer into database, but supply our own address as relay host
+				r.hub = PeerAddress(this->server->host, this->server->port);
+				this->peer_db.update(r);
+			}
+			
+			// send a peer list to the peer 
+			string peers = peer_db.to_string(25);
+			p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length());
+		}
+		this->last_peer_list_broadcast = time(0);
 	}
 	
+	// accept incoming client connections on the standard port 
 	VSLNode *client = 0;
-	if((client = (VSLNode*)this->server->accept())){
+	if(server && server->state & CON_STATE_LISTENING && (client = (VSLNode*)this->server->accept())){
 		cout << "[client] new connection: " << client->host << ":" << client->port << endl;
 		PeerDatabase::Record r;
 		r.peer = PeerAddress(client->host, 9000);
 		r.hub = PeerAddress(server->host, server->port);
 		peer_db.insert(r);
 		
-		Peer *peer = new Peer(client);
 		//peer->setListener(new _PeerListener(this));
-		peers.push_back(peer);
+		peers[client->host+":"+VSL::to_string(client->port)] = client;
 	}
 }
 
@@ -323,8 +443,8 @@ Network::~Network(){
 	LOG("NET: shutting down..");
 	
 	// close connections
-	for(list<Peer*>::iterator it = peers.begin(); it != peers.end(); it++){
-		delete *it;
+	for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
+		delete (*it).second;
 	}
 	
 	// use this function to release the UDT library

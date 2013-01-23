@@ -124,6 +124,10 @@ int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size){
 	pack.cmd.code = cmd;
 	pack.cmd.size = size;
 	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), (unsigned long)size)); 
+	return sendCommand(pack);
+}
+
+int VSLNode::sendCommand(const Packet &pack){
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
@@ -158,62 +162,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// the request will originate from _output and the new connection should be 
 	// connected to _input. Then all data sent by the input will be sent to the output. 
 	else if(packet.cmd.code == RELAY_CONNECT){
-		// receiving a connect when we already have an input node is invalid
-		// although in the future it may be useful as a way to reuse intermediate peer links. 
-		if(this->_input){
-			//ERROR("RELAY_CONNECT received when we already have an _input node.");
-			
-			// prevent recursive delete
-			if(this->_input->_input == this)
-				this->_input->_input = 0;
-			if(this->_input->_output == this)
-				this->_input->_output = 0;
-			delete _input;
-		}
-		// data contains a string of format PROTO:IP:PORT
-		char tmp[SOCKET_BUF_SIZE];
-		memcpy(tmp, packet.data, min((unsigned long)SOCKET_BUF_SIZE, (unsigned long)packet.cmd.size));
-		tmp[packet.cmd.size] = 0;
 		
-		string str = string(tmp);
-		vector<string> tokens;
-		tokenize(str, ":",tokens);
-		string proto = "udt";
-		string host ;
-		uint16_t port = 9000;
-		if(tokens.size() == 3){
-			proto = tokens[0];
-			host = tokens[1];
-			port = atoi(tokens[2].c_str());
-		} else if(tokens.size() == 2){
-			host = tokens[0];
-			port = atoi(tokens[1].c_str());
-		}
-		
-		stringstream err;
-		
-		INFO("[relay] connecting to: "<<host<<":"<<port);
-		
-		// before we start forwarding data (done in the main loop)
-		// we create a new connection and issue a connect on it which 
-		// connects it to host. In order to ensure correct forwarding of all
-		// calls, we also have to set up a "bridge" node which will act as
-		// an adapter passing data between the two inputs. 
-		// this is important, because since we are connecting two _inputs, 
-		// if for example one of them goes into disconnect, the other one will
-		// have no idea about it because it is only responsible for monitoring
-		// it's _output. A bridge will monitor the connection state and appropriately
-		// send a disconnect to the other node that is connected to it. 
-		Node *other = Node::createNode(proto.c_str());
-		BridgeNode *bridge = new BridgeNode();
-		
-		other->connect(host.c_str(), port);
-		
-		// self<->bridge<->other
-		bridge->_input = this;
-		this->_input = bridge; 
-		bridge->_output = other; 
-		other->_input = bridge;
 	}
 	// this one is received when a relay has successfully connected 
 	// the message is sent by the BRIDGE node to it's _input once it's 

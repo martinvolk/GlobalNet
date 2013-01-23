@@ -143,7 +143,7 @@ public:
 	bool operator == (const SHA1Hash &other) const{
 		return memcmp(this->hash, other.hash, sizeof(hash));
 	}
-	void fromString(string source){
+	void from_hex_string(string source){
 		static int nibbles[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15 };
     std::vector<unsigned char> retval;
     for (std::string::const_iterator it = source.begin(); it < source.end(); it += 2) {
@@ -167,8 +167,10 @@ public:
 			}
 			return os.str();
 	}
-	void from_string(const string &str){
-		SHA1((unsigned char*)str.c_str(), str.length(), (unsigned char*)hash);
+	static SHA1Hash compute(const string &str){
+		SHA1Hash hash;
+		SHA1((unsigned char*)str.c_str(), str.length(), (unsigned char*)&hash.hash);
+		return hash;
 	}
 	string str(){
 		return hex();
@@ -199,6 +201,7 @@ typedef enum {
 	CMD_CAN_ROUTE,
 	CMD_GET_PEER_LIST,
 	CMD_PEER_LIST, // list of active peers. (peer:port,peer2:port.. etc)
+	CMD_CONNECT,
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
 	RELAY_CONNECT_OK, /// sent by relay upon success. 
@@ -246,8 +249,28 @@ typedef enum{
 	NODE_BRIDGE
 }NodeType; 
 
+class Node; 
+class VSLNode;
+class RoutingEntry;
+
+struct RoutingEntry{
+	RoutingEntry(){}
+	RoutingEntry(const RoutingEntry &other): from(other.from), 
+		dst_hash(other.dst_hash), to(other.to){}
+	RoutingEntry(Node *a, const string &b, Node *c): 
+		from(a), dst_hash(b), to(c){}
+	Node *from;
+	string dst_hash;
+	Node *to;
+};
+
 typedef int TCPSocket;
 typedef int UDPSocket;
+typedef map<string, RoutingEntry > RoutingTable;
+typedef map<Node*, RoutingEntry> RRTable;
+typedef map<string, VSLNode*> PeerList;
+typedef list<Node*> NodeList;
+typedef VSLNode Peer;
 
 struct Network;
 bool inet_ip_is_local(const string &ip);
@@ -302,6 +325,7 @@ public:
 	virtual int connect(const char *host, uint16_t port);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	virtual int sendCommand(const Packet &pack);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
@@ -332,6 +356,7 @@ public:
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int sendCommand(const Packet &pack);
 	virtual int recvCommand(Packet *pack);
 	virtual int listen(const char *host, uint16_t port);
 	virtual Node* accept();
@@ -473,21 +498,37 @@ public:
 	virtual void close();
 };
 
+class NodeAdapter : public Node{
+public:
+	NodeAdapter(Node *other): other(other){}
+	virtual ~NodeAdapter();
+	
+	//virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	//virtual int listen(const char *host, uint16_t port);
+	//virtual Node* accept();
+	//virtual void run();
+	//virtual void close();
+private: 
+	Node *other;
+};
+
 struct PacketHeader{
+	PacketHeader(){}
+	PacketHeader(uint16_t code, uint16_t size, SHA1Hash hash):
+		code(code), size(size), hash(hash){}
 	uint16_t code;
-	uint16_t source_command;
 	uint16_t size;
+	SHA1Hash hash; 
+	char reserved[16];
 }; 
 
 
 class Packet{
 public:
-	class Header{
-		uint16_t code;
-		uint16_t source_command;
-		uint16_t size;
-	};
-
 	PacketHeader cmd;
 	char data[MAX_PACKET_SIZE];
 	
@@ -578,11 +619,9 @@ public:
 			return *this;
 		}
 		SHA1Hash hash() const{
-			SHA1Hash ret;
 			stringstream ss;
 			ss<<hub.ip<<hub.port<<peer.ip<<peer.port; 
-			ret.from_string(ss.str());
-			return ret;
+			return SHA1Hash::compute(ss.str());
 		}
 		bool operator<(const Record &other) const {
 			return this->hash().hex().compare(other.hash().hex()) < 0;
@@ -620,7 +659,7 @@ public:
 	LinkNode *createLink(const string &path);
 	LinkNode *createTunnel(const string &host, uint16_t port);
 	LinkNode *createCircuit(unsigned int length = 3);
-	void connect(const char *hostname, int port);
+	VSLNode *connect(const char *hostname, int port);
 	void run();
 	
 	VSLNode *server; 
@@ -636,7 +675,7 @@ public:
 		public:
 		virtual void handlePacket(const Packet &pack) = 0;
 	};
-	
+	/*
 	class Peer{
 	public:
 		Peer(VSLNode *socket);
@@ -662,10 +701,14 @@ public:
 		pthread_mutex_t *mu;
 		pthread_t *worker;
 	};
-	
-	list<Peer*> peers;
+	*/
+	// routing table with hash, from, to sockets for routing DATA packets. 
+	RoutingTable rt;
+	RRTable rt_reverse;
+	PeerList peers;
+	NodeList connections;
 private:
-	
+	time_t last_peer_list_broadcast;
 	Peer* getRandomPeer();
 	void _handle_command(Node *source, const Packet &pack);
 	

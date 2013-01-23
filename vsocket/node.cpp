@@ -36,6 +36,13 @@ int Node::sendCommand(NodeMessage msg, const char *data, size_t size){
 	return 1;
 }
 
+int Node::sendCommand(const Packet &pack){
+	// the default behavior is to simply pass the command down the line
+	if(this->_output)
+		this->_output->sendCommand(pack);
+	return 1;
+}
+
 int Node::recvCommand(Packet *dst){
 	// only used by Peer. 
 	//ERROR("CON: call to recvCommand(): NOT IMPLEMENTED!"); 
@@ -162,4 +169,18 @@ Node::~Node(){
 	this->_output = 0;
 	this->_input = 0;
 	
+}
+
+NodeAdapter::~NodeAdapter(){
+	
+}
+
+int NodeAdapter::send(const char *data, size_t maxsize, size_t minsize){
+	// write directly to the managed node output in_write buffer
+	return BIO_write(other->in_write, data, maxsize);
+}
+
+int NodeAdapter::recv(char *data, size_t maxsize, size_t minsize){
+	// read directly from the managed node output in_read buffer
+	return BIO_read(other->in_read, data, maxsize);
 }

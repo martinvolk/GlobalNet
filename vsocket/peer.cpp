@@ -6,6 +6,7 @@ static void *_peer_worker(void *data){
 	return 0;
 }
 */
+/*
 Network::Peer::Peer(VSLNode *socket){
 	this->socket = socket;
 	running = true;
@@ -56,12 +57,12 @@ int Network::Peer::sendCommand(NodeMessage msg, const char *data, size_t size){
 	return socket->sendCommand(msg, data, size);
 }
 
-/*
+
 void Network::Peer::addListener(PeerListener *l){
 	if(listener) delete listener;
 	listener = l;
 }
-*/
+
 bool Network::Peer::is_connected(){
 	if(socket && socket->state & CON_STATE_CONNECTED){
 		return true;
@@ -72,3 +73,4 @@ bool Network::Peer::is_connected(){
 bool Network::Peer::is_disconnected(){
 	return socket && socket->state & CON_STATE_DISCONNECTED;
 }
+*/

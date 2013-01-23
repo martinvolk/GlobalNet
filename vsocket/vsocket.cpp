@@ -232,10 +232,10 @@ namespace VSL{
 	
 	void print_stats(int socket){
 		uint np = 0;
-		for(list<Network::Peer*>::iterator it = net->peers.begin();
+		for(PeerList::iterator it = net->peers.begin();
 				it != net->peers.end(); it++ ){
-			Network::Peer *peer = (*it);
-			SEND_SOCK(socket, "peer: " << peer->address.ip << ":"<<peer->address.port<<" is_connected: "<<peer->is_connected());
+			Peer *peer = (*it).second;
+			SEND_SOCK(socket, "peer: " << peer->host << ":"<<peer->port<<" state: "<<con_state_to_string(peer->state));
 			np++;
 		}
 		SEND_SOCK(socket, "Total: "<<np<<" peers.");
