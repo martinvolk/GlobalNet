@@ -149,6 +149,7 @@ LinkNode *Network::createLink(const string &path){
 			vector<PeerDatabase::Record> random = this->peer_db.random(1);
 			if(!random.size()){
 				ERROR("Link: could not create link! No peers connected!");
+				delete link;
 				return 0;
 			}
 			host = random[0].peer.ip;

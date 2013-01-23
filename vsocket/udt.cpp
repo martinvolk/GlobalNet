@@ -95,7 +95,10 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 		LOG("[connection] incorrect server/peer address. " << hostname << ":" << port);
 		return 0;
 	}
-
+	// set non blocking
+	bool opt = false;
+	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
+	
 	// connect to the server, implict bind
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
 	{
@@ -105,17 +108,13 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 		
 	freeaddrinfo(peer);
 	
-	// set non blocking
-	bool opt = false;
-	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
-	
-	LOG("[udt] connected to "<<hostname<<":"<<port);
-	
 	this->socket = client; 
 	this->host = inet_get_host_ip(hostname);
 	this->port = port;
 	
-	this->state = CON_STATE_ESTABLISHED;
+	this->state = CON_STATE_CONNECTING; 
+	
+	
 	return 1;
 }
 
@@ -132,6 +131,16 @@ void UDTNode::run(){
 	int rc;
 	
 	Node::run();
+	
+	UDTSTATUS status = UDT::getsockstate(socket);
+	if(this->state & CON_STATE_CONNECTING && status == CONNECTED){
+		LOG("[udt] connected to "<<this->host<<":"<<this->port);
+		
+		this->state = CON_STATE_ESTABLISHED;
+	}
+	else if(this->state & CON_STATE_CONNECTING && (status == BROKEN || status == CLOSED)){
+		this->state = CON_STATE_DISCONNECTED;
+	}
 	
 	if(!(this->state & CON_STATE_CONNECTED)){
 		//BIO_clear(this->write_buf);
