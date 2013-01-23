@@ -105,7 +105,7 @@ int UDTNode::connect(const char *hostname, uint16_t port){
 		ERROR("UDT: connect: " << UDT::getlasterror().getErrorMessage());
 		return 0;
 	}
-	exit(0);
+	
 	freeaddrinfo(peer);
 	
 	this->socket = client; 
