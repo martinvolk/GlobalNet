@@ -73,7 +73,7 @@ void PeerDatabase::insert(const Record &_data){
 
 	Record data = _data;
 	if(data.peer.ip.compare("") == 0){
-		LOG("PDB: skipping peer: ip is null");
+		//LOG("PDB: skipping peer: ip is null");
 		return;
 	}
 	if(data.peer.ip.compare(data.hub.ip) == 0 && 
