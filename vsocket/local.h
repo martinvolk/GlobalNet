@@ -516,6 +516,22 @@ private:
 	Node *other;
 };
 
+class MemoryNode : public Node{
+public:
+	MemoryNode();
+	virtual ~MemoryNode();
+	
+	//virtual int connect(const char *host, uint16_t port);
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int recvCommand(Packet *pack);
+	//virtual int listen(const char *host, uint16_t port);
+	//virtual Node* accept();
+	virtual void run();
+	//virtual void close();
+};
+
 struct PacketHeader{
 	PacketHeader(){}
 	PacketHeader(uint16_t code, uint16_t size, SHA1Hash hash):
@@ -656,9 +672,8 @@ public:
 	~Network();
 	
 	
-	LinkNode *createLink(const string &path);
-	LinkNode *createTunnel(const string &host, uint16_t port);
-	LinkNode *createCircuit(unsigned int length = 3);
+	VSLNode *createLink(const string &path);
+	Node *createTunnel(const string &host, uint16_t port);
 	VSLNode *connect(const char *hostname, int port);
 	void run();
 	

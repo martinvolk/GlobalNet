@@ -123,19 +123,21 @@ Establish a link through the nodes specified in path.
 Path: [ip:port]>[ip:port]
 **/
 
-LinkNode *Network::createLink(const string &path){
+Peer *Network::createLink(const string &path){
 	vector<string> tokens;
 	if(peers.size() == 0){
 		ERROR("NET: not enough peers to build a link!");
 		return 0;
 	}
 	
-	LinkNode *link = new LinkNode();
-	
 	tokenize(path, ">", tokens);
 	//Connection *prev_con = 0 ;
 	
 	LOG(tokens.size());
+	VSLNode *parent = 0;
+	
+	// go through each step in the chain and establish appropriate connections through
+	// all the intermediate hosts in the chain. They will all end up as ordinary peer connections to the user. 
 	for(vector<string>::iterator it = tokens.begin(); it != tokens.end(); it++){
 		vector<string> tmp;
 		tokenize(*it, ":", tmp);
@@ -149,26 +151,65 @@ LinkNode *Network::createLink(const string &path){
 			vector<PeerDatabase::Record> random = this->peer_db.random(1);
 			if(!random.size()){
 				ERROR("Link: could not create link! No peers connected!");
-				delete link;
 				return 0;
 			}
 			host = random[0].peer.ip;
 			port = random[0].peer.port;
 		} 
 		LOG("[link] establishing intermediate connection to "<<host<<":"<<port);
+		
+		// set up a new direct connection to the first host in the chain
+		if(parent == 0)
+			parent = connect(host.c_str(), port);
+			
+		// now we need to create a hash that we will send with relay connect to the first host
 		stringstream ss;
-		ss<<"peer:"<<host<<":"<<port;
-		link->connect(ss.str().c_str(), 0);
+		ss<<time(0)<<rand();
+		SHA1Hash nodehash = SHA1Hash::compute(ss.str());
+		ss.clear();
+		
+		// create the request
+		ss<<nodehash.hex()<<":"<<"peer:"<<host<<":"<<port;
+		// notify the peer that we have a new connection
+		parent->sendCommand(RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+		
+		VSLNode *node = new VSLNode(0);
+		NodeAdapter *bridge = new NodeAdapter(node);
+		node->connect("", 0);
+		
+		// place the hash into the routing table and link it 
+		this->rt[nodehash.hex()] = RoutingEntry(parent, "", bridge); 
+		this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), parent); 
+		
+		parent = node;
 	}
-	return link;
+	// return the last node that was created in the chain
+	return parent;
 }
 
-LinkNode * Network::createTunnel(const string &host, uint16_t port) {
-	LinkNode *link = this->createLink("*>*");
+Node * Network::createTunnel(const string &host, uint16_t port) {
+	// create a tunnel through the network
+	VSLNode *link = this->createLink("*>*");
 	if(link){
+		// we need to set up a simple memory node and link it through a bridge to the end of the created link
+		
 		stringstream ss;
-		ss<<"tcp:"<<host<<":"<<port;
-		link->connect(ss.str().c_str(), 0);
+		ss<<time(0)<<rand();
+		SHA1Hash nodehash = SHA1Hash::compute(ss.str());
+		ss.clear();
+		ss<<nodehash.hex()<<":"<<"tcp:"<<host<<":"<<port;
+		
+		MemoryNode *memnode = new MemoryNode();
+		NodeAdapter *bridge = new NodeAdapter(memnode);
+		
+		// issue a relay connect 
+		link->sendCommand(RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+		
+		// make sure anything that comes from parent with nodehash gets sent to memory node
+		this->rt[nodehash.hex()] = RoutingEntry(link, "", bridge); 
+		// make sure anything that comes out of memory node gets sent to the link with nodehash
+		this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), link); 
+		
 		return link;
 	}
 	return 0;
@@ -209,15 +250,41 @@ Network::Network(){
 	peer_db.blacklist(listen_adr);
 }
 
-
+// establish a new connection or set up a new connection within an existing one
 VSLNode *Network::connect(const char *hostname, int port){
 	VSLNode *node = new VSLNode(0);
-	node->connect(hostname, port);
-	peers[string(hostname)+":"+VSL::to_string(port)] = node;
-	PeerDatabase::Record r;
-	r.peer.ip = inet_get_ip(hostname);
-	r.peer.port = port;
-	peer_db.insert(r);
+	PeerList::iterator it = peers.find(string(hostname)+":"+VSL::to_string(port));
+	if(it != peers.end()){
+		LOG("NET: using existing connection to "<<hostname<<":"<<port);
+		VSLNode *parent = (*it).second;
+		NodeAdapter *bridge = new NodeAdapter(node);
+		
+		stringstream ss;
+		ss<<time(0)<<rand();
+		SHA1Hash nodehash = SHA1Hash::compute(ss.str());
+		
+		// notify the peer that we have a new connection
+		parent->sendCommand(CMD_CONNECT, nodehash.hex().c_str(), nodehash.hex().length());
+		
+		// tell the new node to initiate a handshake (since we use adapter, the destination does not matter)
+		node->connect("", 0);
+		
+		// make sure that everything received from parent with nodehash is passed to the bridge
+		this->rt[nodehash.hex()] = RoutingEntry(parent, "", bridge);
+		// make sure that everything that comes from the bridge gets sent to parent with nodehash
+		this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), parent);
+	}
+	else {
+		LOG("NET: setting up a new connection to "<<hostname<<":"<<port);
+		node->connect(hostname, port);
+		peers[string(hostname)+":"+VSL::to_string(port)] = node;
+		
+		PeerDatabase::Record r;
+		r.peer.ip = inet_get_ip(hostname);
+		r.peer.port = port;
+		peer_db.insert(r);
+	}
+	
 	return node;
 }
 
@@ -250,9 +317,11 @@ void Network::run() {
 					
 					peer_db.from_string(string(pack.data));
 				} 
-				// a notificaton of a new wrapped connection 
+				// a new incoming virtual connection within an existing one 
 				if(pack.cmd.code == CMD_CONNECT){
 					// data contains hash that will be used to send and receive data 
+					LOG("NET: incoming virtual connection from "<<p->host<<":"<<p->port);
+					
 					string hash = pack.data;
 					VSLNode *peer = new VSLNode(0);
 					NodeAdapter *adapt = new NodeAdapter(peer);
@@ -264,10 +333,14 @@ void Network::run() {
 					if(it != rt.end()){
 						delete (*it).second.to;
 					}
-					// this takes care of p -> adapter transfers. 
+					// make sure that anything that arrives from p with hash gets passed to adapter
 					this->rt[hash] = RoutingEntry(p, hash, adapt);
-					// this takes care of adapter -> p transfers. 
+					// make sure anything that comes out of adapter gets passed to p with hash
 					this->rt_reverse[adapt] = RoutingEntry(adapt, hash, p);
+					
+					// tell new node to listen for a handshake (the port and hostname does not matter)
+					peer->listen("", 0);
+					
 					// this makes sure that adapter is monitored for received data
 					connections.push_back(adapt);
 					// this makes sure the new virtual peer gets indexed and handled just like a normal peer. 
@@ -427,7 +500,7 @@ void Network::run() {
 	}
 }
 
-
+/*
 LinkNode *Network::createCircuit(unsigned int length){
 	stringstream ss;
 	for(unsigned int c = 0;c<length;c++){
@@ -439,7 +512,7 @@ LinkNode *Network::createCircuit(unsigned int length){
 	LinkNode *link = this->createLink(ss.str());
 	return link;
 }
-
+*/
 Network::~Network(){
 	LOG("NET: shutting down..");
 	
