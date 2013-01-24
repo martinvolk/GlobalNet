@@ -128,6 +128,7 @@ int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size){
 }
 
 int VSLNode::sendCommand(const Packet &pack){
+	if(pack.cmd.code == CMD_DATA) LOG("SENDING "<<pack.cmd.size<<" bytes data to "<<host<<":"<<port);
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
@@ -237,8 +238,8 @@ void VSLNode::run(){
 					packet.data[size] = 0;
 					packet.source = this;
 					
-					LOG("CON_process: received complete packet at "<<this->host<<":"<<this->port<<" cmd: "<<
-						packet.cmd.code<<" datalength: "<<rc);
+					//LOG("CON_process: received complete packet at "<<this->host<<":"<<this->port<<" cmd: "<<
+					//	packet.cmd.code<<" datalength: "<<rc);
 					//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
 					
 					// if we have an output socket then we write the received data directly to that socket
@@ -318,6 +319,18 @@ VSLNode::VSLNode(Node *next){
 	} else {
 		this->_output = next;
 	}
+	
+	this->type = NODE_PEER;
+}
+
+VSLNode::VSLNode(SocketType type){
+	SSLNode *ssl = new SSLNode(type);
+	UDTNode *udp = new UDTNode();
+	
+	ssl->_output = udp;
+	udp->_input = ssl;
+	ssl->_input = this;
+	this->_output = ssl;
 	
 	this->type = NODE_PEER;
 }

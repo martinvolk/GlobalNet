@@ -204,6 +204,8 @@ typedef enum {
 	CMD_GET_PEER_LIST,
 	CMD_PEER_LIST, // list of active peers. (peer:port,peer2:port.. etc)
 	CMD_CONNECT,
+	CMD_OUTBOUND_CONNECT,
+	
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
 	RELAY_CONNECT_OK, /// sent by relay upon success. 
@@ -250,6 +252,12 @@ typedef enum{
 	NODE_LINK,
 	NODE_BRIDGE
 }NodeType; 
+
+typedef enum {
+	SOCK_NONE,
+	SOCK_SERVER,
+	SOCK_CLIENT
+}SocketType;
 
 class Node; 
 class VSLNode;
@@ -352,6 +360,8 @@ private:
 class VSLNode : public Node{
 public:
 	VSLNode(Node *next);
+	VSLNode(SocketType type);
+	
 	virtual ~VSLNode();
 	
 	virtual int connect(const char *host, uint16_t port);
@@ -377,6 +387,8 @@ private:
 class SSLNode : public Node{
 public:
 	SSLNode();
+	SSLNode(SocketType type);
+	
 	virtual ~SSLNode();
 	
 	virtual int connect(const char *host, uint16_t port);
@@ -533,7 +545,7 @@ public:
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
-	virtual int connect(const char *host, uint16_t port){state = CON_STATE_ESTABLISHED; return 1;}
+	virtual int connect(const char *host, uint16_t port);
 	virtual int listen(const char *host, uint16_t port){state = CON_STATE_LISTENING; return 1;}
 	virtual void close(){state = CON_STATE_DISCONNECTED;}
 	//virtual Node* accept();
@@ -726,12 +738,10 @@ public:
 	};
 	*/ 
 	map<string, pair<Node*, Node*> > accept_table;
-	map<string, Node*> forward_table;
+	map<string, pair<string, Node*> > forward_table;
+	map<string, Node*> outbound_table;
 	
-	RoutingTable rt;
-	RRTable rt_reverse;
 	PeerList peers;
-	NodeList connections;
 private:
 	time_t last_peer_list_broadcast;
 	Peer* getRandomPeer();

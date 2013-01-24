@@ -117,7 +117,7 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 			it != this->db.end(); it++){
 		if((*it).second.peer.port != SERV_LISTEN_PORT)
 			continue;
-		LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
+		//LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		rand_set.push_back((*it).second);
 	}
 	if(rand_set.size()==0) return rand_set;

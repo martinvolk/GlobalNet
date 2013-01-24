@@ -182,10 +182,13 @@ void SSLNode::run(){
 		if(this->_output ){
 			this->_output->run();
 			while(!BIO_eof(this->write_buf)){
-				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0)
+				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+					LOG("SSL: sending "<<rc<<" bytes of encrypted data.");
 					this->_output->send(tmp, rc);
+				}
 			}
 			if((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
+				LOG("SSL: received "<<rc<<" bytes of encrypted data.");
 				BIO_write(this->read_buf, tmp, rc);
 			}
 		}
@@ -205,6 +208,7 @@ void SSLNode::run(){
 			return;
 		}
 		if(this->server_socket == false){
+			LOG("SSL: Attempting to connect to "<<this->host<<":"<<this->port);
 			if((res = SSL_connect(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->host = this->_output->host;
@@ -216,6 +220,7 @@ void SSLNode::run(){
 			}
 		}
 		else {
+			LOG("SSL: accepting ssl connections on "<<this->host<<":"<<this->port);
 			if((res=SSL_accept(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->host = this->_output->host;
@@ -291,6 +296,17 @@ SSLNode::SSLNode(){
 	this->ctx = 0;
 	
 	this->type = NODE_SSL;
+}
+
+SSLNode::SSLNode(SocketType type){
+	SSLNode();
+	
+	if(type == SOCK_SERVER){
+		_init_ssl_socket(true);
+	}
+	else if(type == SOCK_CLIENT){
+		_init_ssl_socket(false);
+	}
 }
 
 SSLNode::~SSLNode(){

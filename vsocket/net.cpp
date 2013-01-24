@@ -128,9 +128,7 @@ Node *Network::createLink(const string &path){
 	
 	tokenize(path, ">", tokens);
 	
-	VSLNode *parent = new VSLNode(0);
-	parent->connect(this->server->host.c_str(), this->server->port);
-	connections.push_back(parent);
+	VSLNode *parent = connect(this->server->host.c_str(), this->server->port);
 	
 	LOG("NET: setting up tunnel: "<<path);
 	
@@ -170,37 +168,32 @@ Node *Network::createLink(const string &path){
 		ss<<time(0)<<rand();
 		SHA1Hash nodehash = SHA1Hash::compute(ss.str());
 		ss.str("");
-		
-		// create the request
 		ss<<nodehash.hex()<<":"<<proto<<":"<<host<<":"<<port;
-		// notify the peer that we have a new connection
-		parent->sendCommand(RELAY_CONNECT, ss.str().c_str(), ss.str().length());
+			
+		if(proto.compare("peer") == 0){
+			// create the request
+			parent->sendCommand(RELAY_CONNECT, ss.str().c_str(), ss.str().length());
 		
-		if(proto.compare("peer")){
 			VSLNode *peer = new VSLNode(0);
 			NodeAdapter *bridge = new NodeAdapter(peer);
 			
-			// initiate handshake
-			peer->connect("", 0);
+			peer->connect(nodehash.hex().c_str(), 0);
 			
-			peers[ss.str()] = peer;
-			connections.push_back(bridge);
+			peers[nodehash.hex().c_str()] = peer;
 			
-			// place the hash into the routing table and link it 
-			this->rt[nodehash.hex()] = RoutingEntry(parent, "", bridge); 
-			this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), parent); 
+			accept_table[nodehash.hex()] = pair<Node*, Node*>(bridge, parent);
 			
 			parent = peer;
+			
 			continue;
-		} else if(proto.compare("tcp")){
+		} else if(proto.compare("tcp") == 0){
 			MemoryNode *mem = new MemoryNode();
 			NodeAdapter *bridge = new NodeAdapter(mem);
-		
-			connections.push_back(bridge);
 			
-			// place the hash into the routing table and link it 
-			this->rt[nodehash.hex()] = RoutingEntry(parent, "", bridge); 
-			this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), parent); 
+			parent->sendCommand(CMD_OUTBOUND_CONNECT, ss.str().c_str(), ss.str().length());
+			
+			accept_table[nodehash.hex()] = pair<Node*, Node*>(bridge, parent); 
+			
 			return mem;
 		}
 		break;
@@ -286,7 +279,8 @@ void Network::run() {
 		// remove peers that have disconnected 
 		if(p->state & CON_STATE_DISCONNECTED){
 			//delete p;
-			peers.erase(it++);
+			//peers.erase(it++);
+			it++;
 			continue;
 		}
 		p->run();
@@ -301,31 +295,40 @@ void Network::run() {
 				// set up a new MEM >><< VSL configuration and link it to the ID hash 
 				// always sets up a virtual vsl node on this host and relays messages to it tagged with hash
 				if(pack.cmd.code == CMD_CONNECT){
+					LOG("NET: CONNECT!");
 					// data contains hash that will be used to send and receive data 
 					string hash = pack.data;
-					VSLNode *vsl = new VSLNode(0);
-					NodeAdapter *node = new NodeAdapter(vsl);
-					vsl->listen("", 0); // set it into listening mode
-					
-					// node now represents an ordinary connection node whos data gets forwarded to the input 
-					// of the VSL node which we will register as a new peer. 
-					// the Node we will register as a receiver of messages tagged with hash
-					node->host = hash;
-					node->port = 0;
-					LOG("NET: incoming virtual connection from "<<p->host<<":"<<p->port<<": "<<hash);
-					
-					// make sure that anything that arrives from p with hash gets passed to adapter
-					this->rt[hash] = RoutingEntry(p, hash, node);
-					// make sure anything that comes out of adapter gets passed to p with hash
-					this->rt_reverse[node] = RoutingEntry(node, hash, p);
-					
-					// register the new link and the peer
-					connections.push_back(node);
-					peers[hash] = vsl;
+					VSLNode *node = new VSLNode(SOCK_SERVER);
+					//exit(0);
+					NodeAdapter *bridge = new NodeAdapter(node); 	
+					accept_table[hash] = pair<Node*, Node*>(bridge, p);
+					peers[hash] = node;
 				}
 				// Establish a link from p to another connection node
+				if(pack.cmd.code == CMD_OUTBOUND_CONNECT){
+					LOG("NET: OUTBOUD_CONNECT");
+					string str = string(pack.data);
+					vector<string> tokens;
+					tokenize(str, ":",tokens);
+					string hash, proto, host;
+					uint16_t port = 9000;
+					if(tokens.size() == 3){
+						hash = tokens[0];
+						proto = tokens[1];
+						host = tokens[2];
+						port = atoi(tokens[3].c_str());
+					} else {
+						ERROR("NET: malformed relay packet. Should contain ID:PROTO:IP:PORT");
+						continue; 
+					}
+					
+					Node *peer = Node::createNode(proto.c_str());
+					peer->connect(host.c_str(), port);
+					
+					accept_table[hash] = pair<Node*, Node*>(peer, p);
+				}
 				if(pack.cmd.code == RELAY_CONNECT){
-					// data should contain a string of format ID:PROTO:IP:PORT
+					// data should contain a string of format ID:PEER_IP:PORT
 					char tmp[SOCKET_BUF_SIZE];
 					memcpy(tmp, pack.data, min((unsigned long)SOCKET_BUF_SIZE, (unsigned long)pack.cmd.size));
 					tmp[pack.cmd.size] = 0;
@@ -347,70 +350,33 @@ void Network::run() {
 						continue; 
 					}
 					
-					// if it is a peer connection and we already are connected to 
-					// the peer then we use existing connection. 
+					VSLNode *peer = connect(host.c_str(), port);
 					
-					if(proto.compare("peer") == 0){
-						// establish a new connection to the peer (either using an existing one or otherwise)
-						VSLNode *peer = connect(host.c_str(), port);
-						LOG("NET: setting up a new virtual connection with "<<host<<":"<<port);
-						
-						// on our end of the connection the node will simply be a memory node passing 
-						// already encrypted data to the input of VSLNode on the other end of the connection. 
-						MemoryNode *node = new MemoryNode();
-						NodeAdapter *bridge = new NodeAdapter(node);
-						
-						stringstream ss;
-						ss<<time(0)<<rand();
-						SHA1Hash nodehash = SHA1Hash::compute(ss.str());
-						
-						// notify the peer that we have a new connection
-						peer->sendCommand(CMD_CONNECT, nodehash.hex().c_str(), nodehash.hex().length());
-						
-						// make sure that everything received from peer with nodehash is passed to the bridge
-						this->rt[nodehash.hex()] = RoutingEntry(peer, "", bridge);
-						this->rt[hash] = RoutingEntry(p, "", node);
-						
-						// make sure that everything that comes from the bridge gets sent to parent with nodehash
-						this->rt_reverse[bridge] = RoutingEntry(bridge, nodehash.hex(), peer);
-						this->rt_reverse[node] = RoutingEntry(node, hash, p);
-						
-						// add the memory node into the list of active connections
-						connections.push_back(bridge);
-						connections.push_back(node);
-					}
-					else{
-						// otherwise we set up an ordinary node 
-						
-						INFO("NET: setting up relay connection to: "<<host<<":"<<port<<" for: "<<p->host<<":"<<p->port);
-						
-						Node *other = Node::createNode(proto.c_str());
-						other->connect(host.c_str(), port);
-						
-						this->connections.push_back(other);
-						
-						// insert an entry into the routing table 
-						this->rt[hash] = RoutingEntry(p, "", other);
-						this->rt_reverse[other] = RoutingEntry(other, hash, p);
-					}
+					// make new hash 
+					stringstream ss;
+					ss<<time(0)<<rand();
+					SHA1Hash nodehash = SHA1Hash::compute(ss.str());
+					
+					peer->sendCommand(CMD_CONNECT, nodehash.hex().c_str(), nodehash.hex().length());
+					
+					forward_table[hash] = pair<string, Node*>(nodehash.hex(), peer);
 				}
 				// handle data packets received from peers. 
 				// Usually these should be forwarded to another node that will handle them . 
 				if(pack.cmd.code == CMD_DATA){
 					// lookup where the data should be sent
 					LOG("NET: DATA from:["<<p->host<<":"<<p->port<<"] addressed to:"<<pack.cmd.hash.hex());
-					RoutingTable::iterator it = this->rt.find(pack.cmd.hash.hex());
-					if(it != this->rt.end()){
-						LOG("NET: forwarding data to "<<(*it).second.to->host<<":"<<(*it).second.to->port);
-						// send it to the output (the encrypted end) of peer that is identified by the hash
-						if((*it).second.from == p){
-							pack.cmd.hash.from_hex_string((*it).second.dst_hash);
-							(*it).second.to->sendCommand(pack);
-						} else {
-							pack.cmd.hash.from_hex_string((*it).second.dst_hash);
-							(*it).second.to->sendCommand(pack);
-							ERROR("NET: peer attempting to spoof an ID of DATA packet!");
-						}
+					SHA1Hash hash = pack.cmd.hash;
+					// figure out what to do with it. 
+					map<string, pair<Node*, Node*> >::iterator i = accept_table.find(hash.hex());
+					if(i != accept_table.end()){
+						(*i).second.first->send(pack.data, pack.cmd.size);
+					}
+					map<string, pair<string, Node*> >::iterator j = forward_table.find(hash.hex());
+					if(j != forward_table.end()){
+						// forward the data packet
+						pack.cmd.hash.from_hex_string((*j).second.first);
+						(*j).second.second->sendCommand(pack);
 					}
 				}
 			} // recvCommand
@@ -419,37 +385,29 @@ void Network::run() {
 	} // loop peers
 	
 	// read data from external connections and route it to the right peers
-	for(NodeList::iterator it = connections.begin(); it != connections.end(); ){
-		char tmp[SOCKET_BUF_SIZE];
+	for(map<string, pair<Node*, Node*> >::iterator it = accept_table.begin(); it != accept_table.end(); ){
 		int rc; 
+		char tmp[SOCKET_BUF_SIZE];
+		Node *first = (*it).second.first;
+		Node *second = (*it).second.second;
 		
-		(*it)->run();
-		if((*it)->state & CON_STATE_DISCONNECTED){
-			LOG("NET: connection appears to be disconnected. "<<(*it)->host<<":"<<(*it)->port);
-			//delete (*it);
-			connections.erase(it++);
-			continue;
-		}
-		
-		if((rc = (*it)->recv(tmp, sizeof(tmp), 0))>0){
-			RRTable::iterator rr = rt_reverse.find((*it));
-			if(rr != rt_reverse.end()){
-				LOG("NET: sending "<<rc<<" bytes to peer "<<(*rr).second.to->host<<" - "<<(*rr).second.dst_hash);
-				Packet pack;
-				pack.cmd.code = CMD_DATA;
-				pack.cmd.size = rc;
-				pack.cmd.hash.from_hex_string((*rr).second.dst_hash);
-				memcpy(pack.data, tmp, rc);
-				(*rr).second.to->sendCommand(pack);
-			}
+		if((rc = first->recv(tmp, SOCKET_BUF_SIZE))>0){
+			LOG("NET: forwarding data "<<rc<<" bytes from accept queue to peer: "<<second->host);
+			Packet pack; 
+			pack.cmd.code = CMD_DATA;
+			pack.cmd.hash.from_hex_string((*it).first);
+			pack.cmd.size = rc;
+			memcpy(pack.data, tmp, min(sizeof(pack.data), (unsigned long)rc));
+			second->sendCommand(pack);
 		}
 		it++;
 	}
+	
 	// send some commands if it is time. 
 	if(this->last_peer_list_broadcast < time(0) - NET_PEER_LIST_INTERVAL){
 		LOG(endl<<"CONNECTIONS:");
-		for(NodeList::iterator it = connections.begin(); it != connections.end(); ){
-			LOG((*it)->host<<":"<<(*it)->port<<", state: "<<con_state_to_string((*it)->state));
+		for(map<string, pair<Node*, Node*> >::iterator it = accept_table.begin(); it != accept_table.end(); ){
+			//LOG((*it)->host<<":"<<(*it)->port<<", state: "<<con_state_to_string((*it)->state));
 			it++;
 		}
 		LOG("PEERS:");
@@ -458,7 +416,7 @@ void Network::run() {
 			LOG(p->host<<":"<<p->port<<", state: "<<con_state_to_string(p->state));
 		}
 		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
-			LOG("NET: sending peer list to the peer.");
+			//LOG("NET: sending peer list to the peer.");
 			Peer *p = (*it).second;
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 

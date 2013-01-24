@@ -198,11 +198,14 @@ int NodeAdapter::listen(const char *host, uint16_t port){
 	
 int NodeAdapter::send(const char *data, size_t maxsize, size_t minsize){
 	// write directly to the managed node output in_write buffer
+	LOG("ADAPTER: send "<<maxsize);
 	return memnode->sendOutput(data, maxsize, minsize); 
 }
 
 int NodeAdapter::recv(char *data, size_t maxsize, size_t minsize){
 	// read directly from the managed node output in_read buffer
-	return memnode->recvOutput(data, maxsize, minsize);
+	int rc = memnode->recvOutput(data, maxsize, minsize);
+	LOG("ADAPTER: received "<<rc<<" bytes");
+	return rc;
 }
 
