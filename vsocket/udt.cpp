@@ -236,7 +236,7 @@ void UDTNode::close(){
 	
 	UDT::close(this->socket);
 	
-	LOG("UDT: disconnected!");
+	//LOG("UDT: disconnected!");
 }
 
 UDTNode::UDTNode(){

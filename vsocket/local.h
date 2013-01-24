@@ -144,6 +144,8 @@ public:
 		return memcmp(this->hash, other.hash, sizeof(hash));
 	}
 	void from_hex_string(string source){
+		if(source.length() == 0)
+			return;
 		static int nibbles[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15 };
     std::vector<unsigned char> retval;
     for (std::string::const_iterator it = source.begin(); it < source.end(); it += 2) {
@@ -362,10 +364,11 @@ public:
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
-	/*
+	
 	virtual void set_output(Node *other);
-	virtual void set_input(Node *other);
 	virtual Node* get_output();
+	/*
+	virtual void set_input(Node *other);
 	virtual Node* get_input();*/
 private:
 	void _handle_packet(const Packet &packet);
@@ -498,22 +501,24 @@ public:
 	virtual void close();
 };
 
+class MemoryNode;
 class NodeAdapter : public Node{
 public:
-	NodeAdapter(Node *other): other(other){}
+	NodeAdapter(Node *other);
 	virtual ~NodeAdapter();
 	
-	//virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const char *host, uint16_t port);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
-	//virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const char *host, uint16_t port);
 	//virtual Node* accept();
 	//virtual void run();
 	//virtual void close();
 private: 
 	Node *other;
+	MemoryNode *memnode;
 };
 
 class MemoryNode : public Node{
@@ -521,15 +526,18 @@ public:
 	MemoryNode();
 	virtual ~MemoryNode();
 	
-	//virtual int connect(const char *host, uint16_t port);
+	int sendOutput(const char *data, size_t size, size_t min=0);
+	int recvOutput(char *data, size_t size, size_t min=0);
+	
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
 	//virtual int recvCommand(Packet *pack);
-	//virtual int listen(const char *host, uint16_t port);
+	virtual int connect(const char *host, uint16_t port){state = CON_STATE_ESTABLISHED; return 1;}
+	virtual int listen(const char *host, uint16_t port){state = CON_STATE_LISTENING; return 1;}
+	virtual void close(){state = CON_STATE_DISCONNECTED;}
 	//virtual Node* accept();
 	virtual void run();
-	//virtual void close();
 };
 
 struct PacketHeader{
@@ -672,7 +680,7 @@ public:
 	~Network();
 	
 	
-	VSLNode *createLink(const string &path);
+	Node *createLink(const string &path);
 	Node *createTunnel(const string &host, uint16_t port);
 	VSLNode *connect(const char *hostname, int port);
 	void run();
@@ -716,8 +724,10 @@ public:
 		pthread_mutex_t *mu;
 		pthread_t *worker;
 	};
-	*/
-	// routing table with hash, from, to sockets for routing DATA packets. 
+	*/ 
+	map<string, pair<Node*, Node*> > accept_table;
+	map<string, Node*> forward_table;
+	
 	RoutingTable rt;
 	RRTable rt_reverse;
 	PeerList peers;

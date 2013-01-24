@@ -200,7 +200,8 @@ void SSLNode::run(){
 		// we need to close if we stay here for too long.. 
 		if((milliseconds()-this->timer) > CONNECTION_TIMEOUT){
 			LOG("SSL: connection timed out!");
-			this->close();
+			state = CON_STATE_DISCONNECTED;
+			//this->close();
 			return;
 		}
 		if(this->server_socket == false){
@@ -272,11 +273,13 @@ void SSLNode::close(){
 			while(!BIO_eof(this->write_buf)){
 				char tmp[SOCKET_BUF_SIZE];
 				int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
-				this->_output->send(tmp, rc);
+				if(this->_output)
+					this->_output->send(tmp, rc);
 			}
 		}
 	}
-	this->_output->close();
+	if(this->_output)
+		this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
 	
 	LOG("SSL: disconnected!");

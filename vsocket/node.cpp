@@ -110,11 +110,12 @@ Node::Node(){
 void Node::set_output(Node *other){
 	if(this->_output) delete _output;
 	this->_output = other;
-	other->set_input(this);
+	if(other)
+		other->set_input(this);
 }
 void Node::set_input(Node *other){ 
 	this->_input = other;
-	other->set_output(this);
+	//other->set_output(this);
 }
 Node* Node::get_output(){
 	return this->_output;
@@ -137,7 +138,7 @@ bool Node::get_option(const string &opt, string &res){
 
 set<long> deleted;
 Node::~Node(){
-	LOG("NODE: deleting "<<this<<": "<<this->host<<":"<<this->port);
+	//LOG("NODE: deleting "<<this<<": "<<this->host<<":"<<this->port);
 	if(deleted.find((long)this) != deleted.end()){
 		cout<<"DOUBLE FREE!"<<endl;
 	}
@@ -151,36 +152,57 @@ Node::~Node(){
 	
 	read_buf = write_buf = in_read = in_write = 0;
 	
-	if(this->_output && this->_output != this){
+	/*if(this->_output && this->_output != this){
 		if(this->_output->_input == this)
 			this->_output->_input = 0;
 		if(this->_output->_output == this)
 			this->_output->_output = 0;
 		delete _output;
-	}
+	}*/
+	/*
 	if(this->_input && this->_input != this){
 		if(this->_input->_input == this)
 			this->_input->_input = 0;
 		if(this->_input->_output == this)
 			this->_input->_output = 0;
 		delete _input;
-	}
+	}*/
 	
 	this->_output = 0;
 	this->_input = 0;
 	
 }
 
+NodeAdapter::NodeAdapter(Node *other):other(other){
+	this->memnode = new MemoryNode();
+	other->set_output(memnode);
+}
+
 NodeAdapter::~NodeAdapter(){
 	
 }
 
+int NodeAdapter::connect(const char *host, uint16_t port){
+	this->state = CON_STATE_CONNECTED;
+	this->host = host;
+	this->port = port;
+	return 1;
+}
+
+int NodeAdapter::listen(const char *host, uint16_t port){
+	this->state = CON_STATE_LISTENING;
+	this->host = host;
+	this->port = port;
+	return 1;
+}
+	
 int NodeAdapter::send(const char *data, size_t maxsize, size_t minsize){
 	// write directly to the managed node output in_write buffer
-	return BIO_write(other->in_write, data, maxsize);
+	return memnode->sendOutput(data, maxsize, minsize); 
 }
 
 int NodeAdapter::recv(char *data, size_t maxsize, size_t minsize){
 	// read directly from the managed node output in_read buffer
-	return BIO_read(other->in_read, data, maxsize);
+	return memnode->recvOutput(data, maxsize, minsize);
 }
+

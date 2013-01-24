@@ -92,34 +92,15 @@ namespace VSL{
 	}
 	
 	VSL::VSOCKET tunnel(const char *path){
-		vector<string> hosts;
-		tokenize(path, string(">"), hosts);
-		if(!hosts.size()){
-			ERROR("tunnel: ERROR PARSING PATH STRING!");
-			return -1;
-		}
-		string dest = hosts[hosts.size()-1];
-		string host; int port;
-		_parse_host_port(dest.c_str(), &host, &port);
-		stringstream tmp; 
+		vector<string> tokens;
+		tokenize(path, ":", tokens);
 		
-		tmp<<"*";
-		for(unsigned int c=0;c<hosts.size()-1;c++) 
-			tmp<<">"<<hosts[c];
-		
-		INFO("VSOCKET: setting up tunnel: "<<tmp.str()<<">"<<host<<":"<<port);
-		
-		Node *tun = net->createLink(tmp.str().c_str());
+		Node *tun = net->createTunnel(tokens[0].c_str(), atoi(tokens[1].c_str()));
 		if(tun){
-			stringstream ss;
-			ss<<"tcp:"<<host<<":"<<port;
-			tun->connect(ss.str().c_str(), 0);
-			
 			VSOCKET sock = _create_socket();
 			sockets[sock] = tun;
 			return sock;
 		}
-		
 		return -1;
 	}
 	
