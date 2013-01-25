@@ -25,13 +25,11 @@ ConsoleService::~ConsoleService(){
 		VSL::close(this->socket);
 }
 
-int ConsoleService::listen(const char *host, uint16_t port){
-	LOG("[console] starting console service on port "<<port);
+int ConsoleService::listen(const URL &url){
+	LOG("[console] starting console service on port "<<url.port());
 	
 	VSL::VSOCKET con = VSL::socket(VSL::SOCKET_TCP);
-	stringstream ss;
-	ss<<host<<":"<<port;
-	VSL::listen(con, ss.str().c_str());
+	VSL::listen(con, url);
 	this->socket = con;
 	
 	return 1;

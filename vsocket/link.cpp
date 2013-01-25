@@ -20,14 +20,14 @@ Node *LinkNode::accept(){
 	return 0; 
 }
 
-int LinkNode::connect(const char *hostname, uint16_t port){
+int LinkNode::connect(const URL &url){
 	// calling connect on a link can have several meanings. If the host starts
 	// with "peer:" the link will connect to a peer. If the link is already 
 	// connected to something then it will issue sendCommand and try to 
 	// connect from the already connected host to the next one. 
-	
+	/*
 	// parse the address
-	string str = string(hostname);
+	string str = string(url.host());
 	vector<string> tokens;
 	tokenize(str, ":",tokens);
 	string proto = "";
@@ -37,23 +37,23 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 		host = tokens[1];
 		port = atoi(tokens[2].c_str());
 	} else {
-		ERROR("LINK URL FORMAT NOT SUPPORTED! PLEASE USE proto:host:port! "<<hostname);
+		ERROR("LINK URL FORMAT NOT SUPPORTED! PLEASE USE proto:host:port! "<<url.host());
 	}
 	
 	// connect the nodes appropriately.
 	if(proto.compare("tcp")==0){
 		// do nothing since TCP will simply use sendData()
 		LOG("LINK: issuing remote connect to: "<<host<<":"<<port);
-		this->_output->sendCommand(RELAY_CONNECT, hostname, strlen(hostname));
+		this->_output->sendCommand(RELAY_CONNECT, url.host().c_str(), url.host().length());
 	}
 	else if(proto.compare("peer")==0){
 		LOG("LINK: connecting to new node: "<<host<<":"<<port);
 		
 		// add a new decoder node and connect it's output to the input of the current node
-		VSLNode *peer = new VSLNode(0);
+		VSLNode *peer = new VSLNode();
 		if(this->_output){
 			// issue a remote relay connect
-			this->_output->sendCommand(RELAY_CONNECT, hostname, strlen(hostname));
+			this->_output->sendCommand(RELAY_CONNECT, url.host().c_str(), url.host().length());
 			
 			this->_output->_input = peer;
 			peer->set_output(this->_output);
@@ -61,10 +61,10 @@ int LinkNode::connect(const char *hostname, uint16_t port){
 		} else {
 			this->_output = peer;
 			peer->_input = this;
-			peer->connect(host.c_str(), port);
+			peer->connect(url);
 		}
 	}
-	
+	*/
 	return 1;
 }
 
@@ -82,7 +82,7 @@ int LinkNode::recv(char *data, size_t size, size_t minsize){
 	return BIO_read(this->read_buf, data, size);
 }
 
-int LinkNode::sendCommand(NodeMessage cmd, const char *data, size_t size){
+int LinkNode::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
 	ERROR("[link] send command not implemented!");
 	return -1;
 }
@@ -100,8 +100,7 @@ void LinkNode::run(){
 	if((this->state & CON_STATE_INITIALIZED) && this->_output && this->_output->state & CON_STATE_CONNECTED){
 		LOG("[link] link connected!");
 		
-		this->host = this->_output->host;
-		this->port = this->_output->port;
+		this->url = this->_output->url;
 		
 		this->state = CON_STATE_ESTABLISHED;
 	}
@@ -132,7 +131,7 @@ void LinkNode::run(){
 		this->state |= CON_STATE_IDLE;
 	}
 }
-int LinkNode::listen(const char *host, uint16_t port){
+int LinkNode::listen(const URL &url){
 	ERROR("[link] listen not implemented!");
 	return -1;
 }

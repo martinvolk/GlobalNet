@@ -12,6 +12,26 @@ Free software. Part of the GlobalNet project.
 #include <cstring>
 #include <string>
 
+class URL {
+public:
+		URL():port_(0){}
+		URL(const URL &other);
+		URL(const std::string &proto, const std::string &host, uint16_t port = 0, const std::string &path = "", const std::string &query = "");
+    URL(const std::string& url_s);
+    const std::string &protocol() const {return protocol_;}
+    const std::string &host() const {return host_;}
+    const uint16_t &port() const {return port_;}
+    const std::string &path() const {return path_;}
+    const std::string &query() const {return query_;}
+    const std::string &url() const {return url_;}
+private:
+    void parse(const std::string& url_s);
+private:
+		std::string protocol_, host_, path_, query_;
+		uint16_t port_;
+    std::string url_;
+};
+
 namespace VSL {
 	typedef struct { unsigned char hash[20]; } SHA1Hash;
 	typedef int VSOCKET;
@@ -52,7 +72,7 @@ namespace VSL {
 	int init();
 	void shutdown();
 	
-	int add_peer(const char *host_port);
+	int add_peer(const URL &url);
 	
 	/** bootstraps the network by connecting to the specified list of peers. 
 	There can be any number of initial peers. Once connected, we can use 
@@ -64,7 +84,7 @@ namespace VSL {
 	VSOCKET socket(SOCKPROTO proto);
 	/** Creates a random tunnel to some peer. You can then use bind() or 
 	listen() or connect() on the returned socket. **/
-	VSOCKET tunnel(const char *host_port);
+	VSOCKET tunnel(const URL &url);
 	/** 
 	Binds an allocated socket to the socket address. The address consists of 
 	a public hash of the peer where to bind the socket and a port number. 
@@ -72,10 +92,10 @@ namespace VSL {
 	- Once the socket is bound, it switches state to BOUND. 
 	- If the bind operation fails, then the socket goes into ERROR state. 
 	**/
-	int bind(VSOCKET socket, const char *address);
+	int bind(VSOCKET socket, const URL &url);
 	int bind(VSOCKET socket, const sockaddr_t *address);
 	
-	int listen(VSOCKET socket, const char *address);
+	int listen(VSOCKET socket, const URL &url);
 	/**
 	Tries to accept a connection on the socket. 
 	Returns: 
@@ -88,7 +108,7 @@ namespace VSL {
 	int send(VSOCKET socket, const char *data, size_t size);
 	int recv(VSOCKET socket, char *data, size_t size);
 	
-	int connect(VSOCKET socket, const char *host, uint16_t port);
+	int connect(VSOCKET socket, const URL &url);
 	
 	void run();
 	

@@ -15,14 +15,16 @@ int MemoryNode::sendOutput(const char *data, size_t size, size_t minsize){
 
 int MemoryNode::recvOutput(char *data, size_t size, size_t minsize){
 	if(BIO_ctrl_pending(this->write_buf) < minsize || BIO_ctrl_pending(this->write_buf) == 0) return 0;
-	//LOG("MEMNODE: recvOutput "<<size<<" bytes.");
-	return BIO_read(write_buf, data, size);
+	int rc = BIO_read(write_buf, data, size);
+	if(rc>0)LOG("MEMNODE: recvOutput "<<size<<" bytes.");
+	return rc;
 }
 	
 int MemoryNode::send(const char *data, size_t maxsize, size_t minsize){
 	// write directly to the managed node output in_write buffer
-	//LOG("MEMNODE: send "<<maxsize<<" bytes.");
+	LOG("MEMNODE: send "<<maxsize<<" bytes. "<<url.url());
 	int ret = BIO_write(write_buf, data, maxsize);
+	if(_output) _output->send(data, maxsize, minsize);
 	run();
 	return ret;
 }
@@ -31,20 +33,21 @@ int MemoryNode::recv(char *data, size_t maxsize, size_t minsize){
 	// read directly from the managed node output in_read buffer
 	run();
 	if(BIO_ctrl_pending(this->read_buf) < minsize || BIO_ctrl_pending(this->read_buf) == 0) return 0;
-	//LOG("MEMNODE: recv "<<maxsize<<" bytes.");
-	return BIO_read(read_buf, data, maxsize);
+	int rc = BIO_read(read_buf, data, maxsize);
+	if(_output) rc = _output->recv(data, maxsize, minsize);
+	if(rc > 0) LOG("MEMNODE: recv "<<rc<<" bytes.");
+	return rc;
 }
 
-int MemoryNode::connect(const char *host, uint16_t port){
+int MemoryNode::connect(const URL &url){
 	state = CON_STATE_ESTABLISHED; 
-	this->host = host;
-	this->port = port;
+	this->url = url;
 	return 1;
 }
 void MemoryNode::run(){
 	int rc;
 	char tmp[SOCKET_BUF_SIZE];
-	
+	/*
 	if(_output){
 		if(BIO_ctrl_pending(write_buf)>0){
 			if((rc = BIO_read(write_buf, tmp, SOCKET_BUF_SIZE))>0)
@@ -55,5 +58,5 @@ void MemoryNode::run(){
 			BIO_write(read_buf, tmp, rc);
 		}
 		_output->run();
-	}
+	}*/
 }

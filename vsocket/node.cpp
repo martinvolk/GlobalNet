@@ -14,7 +14,7 @@ Node * Node::accept(){
 	return 0;
 }
 
-int Node::connect(const char *hostname, uint16_t port){
+int Node::connect(const URL &url){
 	ERROR("CON_connect not implemented!");
 	return -1;
 }
@@ -29,10 +29,10 @@ int Node::recv(char *data, size_t size, size_t minsize){
 }
 
 
-int Node::sendCommand(NodeMessage msg, const char *data, size_t size){
+int Node::sendCommand(NodeMessage msg, const char *data, size_t size, const string &tag){
 	// the default behavior is to simply pass the command down the line
 	if(this->_output)
-		this->_output->sendCommand(msg, data, size);
+		this->_output->sendCommand(msg, data, size, tag);
 	return 1;
 }
 
@@ -53,7 +53,7 @@ void Node::run(){
 	if(_output)
 		_output->run();
 }
-int Node::listen(const char *host, uint16_t port){
+int Node::listen(const URL &url){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }
@@ -63,29 +63,6 @@ void Node::peg(Node *other){
 
 void Node::close(){
 	ERROR("CONNECTION: close() has to be implemented!");
-}
-
-
-Node *Node::createNode(const char *name){
-	if(strcmp(name, "peer")== 0){
-		return new VSLNode(0);
-	}
-	else if(strcmp(name, "tcp")==0){
-		return new TCPNode();
-	}
-	else if(strcmp(name, "udt")==0){
-		return new UDTNode();
-	}
-	else if(strcmp(name, "ssl")==0){
-		return new SSLNode();
-	}
-	else if(strcmp(name, "socks")==0){
-		return new SocksNode();
-	}
-	else{
-		ERROR("Unknown socket type '"<<name<<"'");
-	}
-	return 0;
 }
 
 Node::Node(){
@@ -138,7 +115,7 @@ bool Node::get_option(const string &opt, string &res){
 
 set<long> deleted;
 Node::~Node(){
-	//LOG("NODE: deleting "<<this<<": "<<this->host<<":"<<this->port);
+	//LOG("NODE: deleting "<<this<<": "<<url.url());
 	if(deleted.find((long)this) != deleted.end()){
 		cout<<"DOUBLE FREE!"<<endl;
 	}
@@ -182,17 +159,15 @@ NodeAdapter::~NodeAdapter(){
 	
 }
 
-int NodeAdapter::connect(const char *host, uint16_t port){
+int NodeAdapter::connect(const URL &url){
 	this->state = CON_STATE_CONNECTED;
-	this->host = host;
-	this->port = port;
+	this->url = url;
 	return 1;
 }
 
-int NodeAdapter::listen(const char *host, uint16_t port){
+int NodeAdapter::listen(const URL &url){
 	this->state = CON_STATE_LISTENING;
-	this->host = host;
-	this->port = port;
+	this->url = url;
 	return 1;
 }
 	
@@ -205,7 +180,7 @@ int NodeAdapter::send(const char *data, size_t maxsize, size_t minsize){
 int NodeAdapter::recv(char *data, size_t maxsize, size_t minsize){
 	// read directly from the managed node output in_read buffer
 	int rc = memnode->recvOutput(data, maxsize, minsize);
-	LOG("ADAPTER: received "<<rc<<" bytes");
+	if(rc>0) LOG("ADAPTER: received "<<rc<<" bytes from "<<memnode->url.url());
 	return rc;
 }
 

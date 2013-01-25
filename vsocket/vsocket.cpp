@@ -68,34 +68,20 @@ namespace VSL{
 		return -1;
 	}
 	
-	static bool _parse_host_port(const string &host_port, string *host, int *port){
-		vector<string> peer;
-		tokenize(host_port, string(":"), peer);
-		if(peer.size() > 1){
-			*port = atoi(peer[1].c_str());
-			*host = peer[0];
-			return true;
-		}
-		return false;
-	}
-	
 	VSL::VSOCKET socket(VSL::SOCKPROTO type){
 		const char *type_str;
 		if(type == VSL::SOCKET_TCP) type_str = "tcp";
 		else if(type == VSL::SOCKET_SOCKS) type_str = "socks";
 		else ERROR("TYPE NOT IMPLEMENTED!");
 		
-		Node *con = Node::createNode(type_str);
+		Node *con = net->createNode(type_str);
 		VSOCKET sock = _create_socket();
 		sockets[sock] = con;
 		return sock;
 	}
 	
-	VSL::VSOCKET tunnel(const char *path){
-		vector<string> tokens;
-		tokenize(path, ":", tokens);
-		
-		Node *tun = net->createTunnel(tokens[0].c_str(), atoi(tokens[1].c_str()));
+	VSL::VSOCKET tunnel(const URL &url){
+		Node *tun = net->createTunnel(url);
 		if(tun){
 			VSOCKET sock = _create_socket();
 			sockets[sock] = tun;
@@ -118,36 +104,26 @@ namespace VSL{
 		return -1; // invalid descriptor 
 	}
 	
-	int add_peer(const char *host_port){
-		string host;
-		int port;
-		if(_parse_host_port(host_port, &host, &port)){
-			net->connect(host.c_str(), port);
-			//Peer *node = net->createPeer();
-			//node->socket->connect(host.c_str(), port);
+	int add_peer(const URL &url){
+		net->connect(url);
+		return -1;
+	}
+	
+	int connect(VSOCKET socket, const URL &url){
+		Node *con = _find_socket(socket);
+		
+		if(con){
+			con->connect(url);
 			return 1;
 		}
 		return -1;
 	}
 	
-	int connect(VSOCKET socket, const char *host, uint16_t port ){
+	int listen(VSOCKET socket, const URL &url){
 		Node *con = _find_socket(socket);
 		
 		if(con){
-			con->connect(host, port);
-			return 1;
-		}
-		return -1;
-	}
-	
-	int listen(VSOCKET socket, const char *host_port){
-		Node *con = _find_socket(socket);
-		
-		if(con){
-			string host;
-			int port;
-			if(_parse_host_port(host_port, &host, &port))
-				return con->listen(host.c_str(), port); 
+			return con->listen(url); 
 		}
 		return -1;
 	}
@@ -216,7 +192,7 @@ namespace VSL{
 		for(PeerList::iterator it = net->peers.begin();
 				it != net->peers.end(); it++ ){
 			Peer *peer = (*it).second;
-			SEND_SOCK(socket, "peer: " << peer->host << ":"<<peer->port<<" state: "<<con_state_to_string(peer->state));
+			SEND_SOCK(socket, "peer: " << peer->url.url()<<" state: "<<con_state_to_string(peer->state));
 			np++;
 		}
 		SEND_SOCK(socket, "Total: "<<np<<" peers.");

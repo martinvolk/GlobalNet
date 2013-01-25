@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
 		tokenize(string(options[CONNECT].first()->arg), string(","), peers);
 		for(vector<string>::iterator i = peers.begin(); i!=peers.end();i++){
 			// this will extend the network with actual physical peers identified by an IP address. 
-			VSL::add_peer((*i).c_str());
+			VSL::add_peer(URL("vsl://"+(*i)));
 		}
 	}
 	
@@ -136,13 +136,13 @@ int main(int argc, char* argv[])
 	Service *socks = new SocksService();
 	Service *console = new ConsoleService(); 
 	
-	socks->listen("localhost", port);
+	socks->listen(URL("tcp", "localhost", port));
 	
 	// start the console service
 	if(options[CONSOLE_PORT].count() > 0){
-		console->listen("localhost", atoi(options[CONSOLE_PORT].first()->arg));
+		console->listen(URL("tcp", "localhost", atoi(options[CONSOLE_PORT].first()->arg)));
 	} else {
-		console->listen("localhost", 2000);
+		console->listen(URL("tcp", "localhost", 2000));
 	}
 	
 	unsigned long usec = 0;

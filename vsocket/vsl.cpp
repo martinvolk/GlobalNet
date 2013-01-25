@@ -8,7 +8,7 @@ Free software. Part of the GlobalNet project.
 #include "local.h"
 
 
-int VSLNode::connect(const char *hostname, uint16_t port){ 
+int VSLNode::connect(const URL &url){ 
 	if(this->state & CON_STATE_CONNECTED){
 		cout<<"CON_connect: connection is already connected. Please call CON_close() before establishing a new one!"<<endl;
 		return 0;
@@ -27,7 +27,7 @@ int VSLNode::connect(const char *hostname, uint16_t port){
 	BIO_flush(in_write);
 	BIO_reset(in_write);
 	
-	this->_output->connect(hostname, port);
+	this->_output->connect(url);
 	
 	return 1;
 }
@@ -45,7 +45,7 @@ Node *VSLNode::accept(){
 	if((peer = this->_output->accept())){
 		// the output has a new stream connected. 
 		// we need to create a new PEER node that will handle this new connection. 
-		VSLNode *con = new VSLNode(0);
+		VSLNode *con = new VSLNode();
 		
 		// the new connection is technically not connected. 
 		// it will become connected once "peer" has become connected. 
@@ -56,8 +56,7 @@ Node *VSLNode::accept(){
 		else
 			con->state = CON_STATE_ESTABLISHED;
 		
-		con->host = peer->host;
-		con->port = peer->port;
+		con->url = peer->url;
 		
 		// set the output to newly accepted peer
 		con->_output = peer;
@@ -67,7 +66,7 @@ Node *VSLNode::accept(){
 	return 0;
 }
 
-int VSLNode::listen(const char *host, uint16_t port){
+int VSLNode::listen(const URL &url){
 	// listening means that we are setting up a connection in order to listen for other connections
 	// since peer can not directly listen on anything, we just forward the request. 
 	if(!this->_output || (this->state & CON_STATE_CONNECTED)){
@@ -75,9 +74,8 @@ int VSLNode::listen(const char *host, uint16_t port){
 		return -1;
 	}
 	this->state = CON_STATE_LISTENING;
-	if(this->_output->listen(host, port)>0){
-		this->host = this->_output->host;
-		this->port = this->_output->port;
+	if(this->_output->listen(url)>0){
+		this->url = this->_output->url;
 		return 1;
 	}
 	return -1;
@@ -116,19 +114,20 @@ int VSLNode::recv(char *data, size_t size, size_t minsize){
 SendCommand is supported by nodes that support commands. Our peer node is one of them. 
 A SOCKS server for example will support commands as well. If a 
 **/
-int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size){
+int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
 	// sending a command means that we want to send the data as an argument to a command
 	// this function writes a command packet to the output buffer, which is then sent 
 	// down the network in the main loop. inserts a command into the stream. 
 	Packet pack; 
 	pack.cmd.code = cmd;
 	pack.cmd.size = size;
+	pack.cmd.hash.from_hex_string(tag);
 	memcpy(&pack.data[0], data, min(ARRSIZE(pack.data), (unsigned long)size)); 
 	return sendCommand(pack);
 }
 
 int VSLNode::sendCommand(const Packet &pack){
-	if(pack.cmd.code == CMD_DATA) LOG("SENDING "<<pack.cmd.size<<" bytes data to "<<host<<":"<<port);
+	if(pack.cmd.code == CMD_DATA) LOG("SENDING "<<pack.cmd.size<<" bytes data to "<<url.url());
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
@@ -142,6 +141,19 @@ int VSLNode::recvCommand(Packet *dst){
 	return 0;
 }
 
+void VSLNode::setPacketHandler(const string &tag, PacketHandler *handler){
+	m_PacketHandlers[tag] = handler;
+}
+
+void VSLNode::removePacketHandler(const string &tag){
+	map<string, PacketHandler*>::iterator it = m_PacketHandlers.find(tag);
+	if(it != m_PacketHandlers.end())
+		m_PacketHandlers.erase(it);
+}
+
+void VSLNode::do_handshake(SocketType type){
+	ssl->do_handshake(type); 
+}
 /**
 This function handles incoming packets received from _output node. 
 **/
@@ -151,6 +163,22 @@ void VSLNode::_handle_packet(const Packet &packet){
 	if(packet.cmd.code == CMD_DATA){
 		//LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
 		BIO_write(this->in_read, packet.data, packet.cmd.size);
+	}
+	else if(packet.cmd.code == CMD_CHAN_INIT){
+		LOG("VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
+		map<string, Channel*>::iterator it = m_Channels.find(packet.cmd.hash.hex());
+		if(it == m_Channels.end()){
+			Channel *chan = new Channel(this, packet.cmd.hash.hex());
+			m_Channels[packet.cmd.hash.hex()] = chan;
+		}
+		else{
+			ERROR("VSL: CHAN_INIT: attempting to initialize an already registered channel!");
+		}
+		//m_pNetwork->registerChannel(chan);
+	}
+	else if(packet.cmd.code == RELAY_CONNECT){
+		LOG("VSL: received RELAY_CONNECT "<<packet.cmd.hash.hex()<<"from "<<url.url());
+		
 	}
 	// received when the relay has no more data to send or when the remote 
 	// end on the relay has disconnected. Received on the client end. 
@@ -183,14 +211,18 @@ void VSLNode::run(){
 	if(_input && _input->type == NODE_BRIDGE) _input->run();
 	Node::run();
 	
+	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
+			it != m_Channels.end(); it++){
+		(*it).second->run();
+	}
+	
 	// if we are waiting for connection and connection of the underlying node has been established
 	if((this->state & CON_STATE_CONNECTING) && this->_output && (this->_output->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
-		this->host = this->_output->host;
-		this->port = this->_output->port;
+		this->url = this->_output->url;
 		// send information about our status to the other peer. 
 		
-		LOG("VSL: connected to "<<host<<":"<<port);
+		LOG("VSL: connected to "<<url.url());
 		// toggle our state to connected as well. 
 		this->state = CON_STATE_ESTABLISHED;
 	}
@@ -201,9 +233,9 @@ void VSLNode::run(){
 		// all this data belongs in a DATA packet. This data could not have been
 		// directly writen to write_buf precisely because it needs to be formatted. 
 		while((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("[sending data] "<<rc<<" bytes to "<<this->host<<":"<<this->port);
+			//LOG("[sending data] "<<rc<<" bytes to "<<url.url());
 			
-			this->sendCommand(CMD_DATA, tmp, rc);
+			this->sendCommand(CMD_DATA, tmp, rc, "");
 		}
 		
 		/// now we process our write_buf and fill read_buf with data from _ouput
@@ -238,14 +270,21 @@ void VSLNode::run(){
 					packet.data[size] = 0;
 					packet.source = this;
 					
-					//LOG("CON_process: received complete packet at "<<this->host<<":"<<this->port<<" cmd: "<<
+					//LOG("CON_process: received complete packet at "<<url.url()<<" cmd: "<<
 					//	packet.cmd.code<<" datalength: "<<rc);
 					//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
 					
 					// if we have an output socket then we write the received data directly to that socket
 					//LOG(this->bridge);
-					_handle_packet(packet);
-					
+					map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(packet.cmd.hash.hex()); 
+					if(h != m_PacketHandlers.end()){
+						LOG("VSL: passing packet to listener "<<packet.cmd.hash.hex());
+						(*h).second->handlePacket(packet);
+					}
+					else {
+						LOG("VSL: handling packet "<<packet.cmd.hash.hex());
+						_handle_packet(packet);
+					}
 					this->_recv_packs.push_back(packet);
 					
 					// update the recv_buf to only have the trailing data that has not 
@@ -307,28 +346,12 @@ Node* VSLNode::get_input(){
 }
 */
 
-VSLNode::VSLNode(Node *next){
-	if(!next){
-		SSLNode *ssl = new SSLNode();
-		UDTNode *udp = new UDTNode();
-		
-		ssl->_output = udp;
-		udp->_input = ssl;
-		ssl->_input = this;
-		this->_output = ssl;
-	} else {
-		this->_output = next;
-	}
+VSLNode::VSLNode(){
+	ssl = new SSLNode();
+	udt = new UDTNode();
 	
-	this->type = NODE_PEER;
-}
-
-VSLNode::VSLNode(SocketType type){
-	SSLNode *ssl = new SSLNode(type);
-	UDTNode *udp = new UDTNode();
-	
-	ssl->_output = udp;
-	udp->_input = ssl;
+	ssl->_output = udt;
+	udt->_input = ssl;
 	ssl->_input = this;
 	this->_output = ssl;
 	
@@ -336,7 +359,7 @@ VSLNode::VSLNode(SocketType type){
 }
 
 VSLNode::~VSLNode(){
-	//LOG("VSL: deleting "<<this->host<<":"<<this->port);
+	//LOG("VSL: deleting "<<url.url());
 	
 	
 }

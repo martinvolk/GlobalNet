@@ -96,10 +96,10 @@ void SocksService::run(){
 		VSL::getsockopt(client, "socks_request_host", host);
 		VSL::getsockopt(client, "socks_request_port", port);
 		if(!link)
-			link = VSL::tunnel((host+":"+port).c_str()); 
+			link = VSL::tunnel(URL("tcp", host, atoi(port.c_str()))); 
 		else {
 			LOG("SOCKS: using previously opened socket from cache!");
-			VSL::connect(link, (string("tcp:")+host+":"+port).c_str(), 0);
+			VSL::connect(link, URL("tcp", host, atoi(port.c_str())));
 		}
 		if(link > 0){
 			this->local_clients.push_back(pair<VSL::VSOCKET, VSL::VSOCKET>(client, link));
@@ -217,6 +217,7 @@ void SocksService::run(){
 		VSL::getsockinfo(link, &info);
 		
 		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
+			LOG("SOCKS: sending "<<rs<<" bytes to link.");
 			VSL::send(link, buf, rs);
 		} 
 		if(rs == 0 || info.state == VSL::VSOCKET_IDLE){ // client disconnected
@@ -244,12 +245,12 @@ void SocksService::run(){
 	}
 }
 
-int SocksService::listen(const char *host, uint16_t port){
-	if(VSL::listen(this->local_socket, (string(host)+":"+VSL::to_string(port)).c_str())>0){
-		LOG("SOCKS: listening on port "<<port);
+int SocksService::listen(const URL &url){
+	if(VSL::listen(this->local_socket, url)>0){
+		LOG("SOCKS: listening on port "<<url.port());
 		return 1;
 	}
-	LOG("SOCKS: failed to listen on "<<host<<":"<<port);
+	LOG("SOCKS: failed to listen on "<<url.url());
 	return -1;
 	/*
 	int z;  

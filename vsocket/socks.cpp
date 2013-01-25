@@ -32,8 +32,8 @@ int SocksNode::send(const char *data, size_t size, size_t minsize){
 int SocksNode::recv(char *data, size_t size, size_t minsize){
 	return -1;
 }
-int SocksNode::listen(const char *host, uint16_t port){
-	return listen_socket->listen(host, port);
+int SocksNode::listen(const URL &url){
+	return listen_socket->listen(url);
 }
 Node* SocksNode::accept(){
 	if(accepted.size()) {
@@ -47,7 +47,7 @@ void SocksNode::run(){
 	Node *client = 0; 
 	if((client = listen_socket->accept()) != 0){
 		// push the client into the queue of socks nodes
-		LOG("SocksNode: accepted connection from "<<client->host<<":"<<client->port);
+		LOG("SocksNode: accepted connection from "<<client->url.url());
 		socks_state_t state; 
 		state.last_event = time(0);
 		state.state = SOCKS_STATE_INIT;
@@ -128,6 +128,7 @@ void SocksNode::run(){
 			}
 		}
 		if(state.socks.atype == 3 && state.state & SOCKS_STATE_6){
+			unsigned char port;
 			if(c->recv((char*)&port, 2, 2)==2){
 				c->set_option("socks_request_port", VSL::to_string(ntohs(port)));
 				state.state = SOCKS_STATE_8;

@@ -87,7 +87,7 @@ public:
 	// listening socket
 	VSL::VSOCKET socket;
 	
-	virtual int listen(const char *host, uint16_t port) = 0;
+	virtual int listen(const URL &url) = 0;
 	virtual void run() = 0;
 };
 
@@ -95,7 +95,7 @@ class SocksService : public Service{
 public:
 	SocksService();
 	~SocksService();
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual void run();
 private: 
 	class CachePost{
@@ -116,7 +116,7 @@ private:
 
 class ConsoleService : public Service{
 	~ConsoleService();
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual void run();
 };
 

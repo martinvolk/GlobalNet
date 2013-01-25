@@ -20,20 +20,20 @@ static int socket_writable(int socket){
 	return select(1, 0, &fdset, 0, &tv);
 }*/
 
-int TCPNode::connect(const char *host, uint16_t port){
+int TCPNode::connect(const URL &url){
 	struct hostent *hp;
 	int s;
 	
-	hp = gethostbyname(host);
+	hp = gethostbyname(url.host().c_str());
 	if (hp == NULL) {
-		fprintf(stderr, "%s: unknown host\n", host);
+		fprintf(stderr, "%s: unknown host\n", url.host().c_str());
 		return -1;
 	}
 	memset((char *)&_socket_addr, 0, sizeof(_socket_addr));
 	memcpy((char *)&_socket_addr.sin_addr, hp->h_addr, hp->h_length);
 	//server.sin_len = sizeof(server);
 	_socket_addr.sin_family = AF_INET;
-	_socket_addr.sin_port = htons(port);
+	_socket_addr.sin_port = htons(url.port());
 	s = ::socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (s < 0) {
 		perror("socket");
@@ -46,9 +46,9 @@ int TCPNode::connect(const char *host, uint16_t port){
 	this->state = CON_STATE_CONNECTING; 
 	this->socket = s;
 	
-	this->host = inet_get_host_ip(host);
-	this->port = port;
+	this->url = url;
 	
+	LOG("TCP: connecting to "<<url.url());
 	// we set the state right away to established because the connect
 	// call is blocking
 	//this->state = CON_STATE_ESTABLISHED;
@@ -74,8 +74,7 @@ Node *TCPNode::accept(){
 		
 		char host[NI_MAXHOST];
 		getnameinfo((sockaddr *)&adr_clnt, len_inet, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
-		con->host = host;
-		con->port = atoi(clientservice);
+		con->url = URL(string("tcp://")+host+":"+string(clientservice));
 		
 		LOG("TCP: incoming connection from "<<host<<":"<<clientservice);
 		
@@ -92,7 +91,7 @@ Node *TCPNode::accept(){
 	return 0;
 }
 
-int TCPNode::listen(const char *host, uint16_t port){
+int TCPNode::listen(const URL &url){
 	int z;  
 	int s;  
 	struct sockaddr_in adr_srvr;  
@@ -114,7 +113,7 @@ int TCPNode::listen(const char *host, uint16_t port){
 	bzero((char *) &adr_srvr, sizeof(adr_srvr));
 	adr_srvr.sin_family = AF_INET;
 	adr_srvr.sin_addr.s_addr = INADDR_ANY;
-	adr_srvr.sin_port = htons(port);
+	adr_srvr.sin_port = htons(url.port());
 
 	z = ::bind(s,(struct sockaddr *)&adr_srvr,  len_inet);  
 	if ( z == -1 )  {
@@ -130,7 +129,7 @@ int TCPNode::listen(const char *host, uint16_t port){
 		goto close;
 	}
 	
-	LOG("[tcp local] now listening on port "<<port);
+	LOG("[tcp local] now listening on port "<<url.port());
 	
 	optval = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
@@ -138,8 +137,7 @@ int TCPNode::listen(const char *host, uint16_t port){
 	val = fcntl(s, F_GETFL, 0);
 	fcntl(s, F_SETFL, val | O_NONBLOCK);
 	
-	this->host = inet_get_host_ip(host);
-	this->port = port;
+	this->url = url;
 	
 	this->state = CON_STATE_LISTENING;
 	this->socket = s;
@@ -152,7 +150,9 @@ close:
 
 int TCPNode::recv(char *data, size_t size, size_t minsize){
 	if(BIO_ctrl_pending(this->read_buf) < minsize) return 0;
-	return BIO_read(this->read_buf, data, size);
+	int rc = BIO_read(this->read_buf, data, size);
+	//if(rc>0)LOG("TCP: recv "<<rc<<" bytes.");
+	return rc;
 }
 
 int TCPNode::send(const char *data, size_t size, size_t minsize){
@@ -172,10 +172,10 @@ void TCPNode::run(){
 			// in progress 
 			return;
 		} else if(rc == 0){
-			LOG("TCP: successfully connected to "<<host<<":"<<port);
+			LOG("TCP: successfully connected to "<<url.url());
 			state = CON_STATE_ESTABLISHED; 
 		} else {
-			LOG("TCP: connection failed to "<<host<<":"<<port);
+			LOG("TCP: connection failed to "<<url.url());
 			::close(socket);
 			state = CON_STATE_DISCONNECTED;
 		}
@@ -184,13 +184,13 @@ void TCPNode::run(){
 	if(this->state & CON_STATE_CONNECTING && socket_writable(this->socket)>0){
 		this->state = CON_STATE_ESTABLISHED;
 	
-		LOG("[tcp] connected to "<<this->host<<":"<<this->port);
+		LOG("[tcp] connected to "<<url.url());
 	}*/
 	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
 		while(!BIO_eof(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				//LOG("TCP: sending "<<rc<<" bytes of data to "<<this->host<<":"<<this->port);
+				//LOG("TCP: sending "<<rc<<" bytes of data to "<<url.url());
 				if((rc = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))<0){
 					perror("TCP send");
 				}
@@ -230,7 +230,7 @@ TCPNode::TCPNode(){
 }
 
 TCPNode::~TCPNode(){
-	//LOG("TCP: deleting "<<this->host<<":"<<this->port);
+	//LOG("TCP: deleting "<<url.url());
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

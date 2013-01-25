@@ -8,23 +8,20 @@
 */
 
 
-static bool _try_connect(const string &host, int port){
-	stringstream ss;
-	ss<<port;
-	
-	struct addrinfo hints, *local, *peer;
+static bool _try_connect(const URL &url){
+	struct addrinfo hints, *local = 0, *peer = 0;
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_flags = AI_PASSIVE;
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	
-	if (0 != getaddrinfo(NULL, ss.str().c_str(), &hints, &local)){
+	if (0 != getaddrinfo(NULL, VSL::to_string(url.port()).c_str(), &hints, &local)){
 		ERROR("Could not get address info on local address!");
 	}
 	
 	UDTSOCKET client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
-	if (0 != getaddrinfo(host.c_str(), ss.str().c_str(), &hints, &peer)){
-		//LOG("PDB: peer vetting failed: error getting peer address!");
+	if (0 != getaddrinfo(url.host().c_str(), VSL::to_string(url.port()).c_str(), &hints, &peer)){
+		LOG("PDB: peer vetting failed: error getting peer address!"<<url.url());
 		goto fail;
 	}
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
@@ -32,13 +29,13 @@ static bool _try_connect(const string &host, int port){
 		//LOG("PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
 		goto fail;
 	}
-	freeaddrinfo(local);
-	freeaddrinfo(peer);
+	if(local)freeaddrinfo(local);
+	if(peer)freeaddrinfo(peer);
 	UDT::close(client);
 	return true;
 fail:
 	freeaddrinfo(local);
-	freeaddrinfo(peer);
+	if(peer)freeaddrinfo(peer);
 	UDT::close(client);
 	return false;
 }
@@ -67,17 +64,17 @@ void PeerDatabase::insert(const Record &_data){
 	LOCK(mu,0);
 	
 //#ifndef DEBUG
-	if(blocked.find(_data.peer.ip) != blocked.end())
+	if(blocked.find(_data.peer.host()) != blocked.end())
 		return;
 //#endif
 
 	Record data = _data;
-	if(data.peer.ip.compare("") == 0){
+	if(data.peer.host().compare("") == 0 || data.peer.protocol().compare("vsl") != 0){
 		//LOG("PDB: skipping peer: ip is null");
 		return;
 	}
-	if(data.peer.ip.compare(data.hub.ip) == 0 && 
-			data.peer.port == data.hub.port){
+	if(data.peer.host().compare(data.hub.host()) == 0 && 
+			data.peer.port() == data.hub.port()){
 		LOG("PDB: skipping peer: ip same as hub!");
 		return;
 	}
@@ -115,7 +112,7 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 	rand_set.reserve(this->db.size());
 	for(map<string, Record>::iterator it = this->db.begin(); 
 			it != this->db.end(); it++){
-		if((*it).second.peer.port != SERV_LISTEN_PORT)
+		if((*it).second.peer.port() != SERV_LISTEN_PORT)
 			continue;
 		//LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		rand_set.push_back((*it).second);
@@ -133,10 +130,8 @@ string PeerDatabase::to_string(unsigned int count){
 	stringstream ss;
 	ss<<time(0);
 	for(size_t c=0;c< rand_set.size();c++){
-		ss<<";"<<rand_set[c].hub.ip<<":"
-			<<rand_set[c].hub.port<<":" 
-			<<rand_set[c].peer.ip<<":"
-			<<rand_set[c].peer.port<<":"
+		ss<<";"<<rand_set[c].hub.url()<<"|"
+			<<rand_set[c].peer.url()<<"|"
 			<<rand_set[c].last_update;
 	}
 	return ss.str();
@@ -150,17 +145,15 @@ void PeerDatabase::from_string(const string &peers){
 	time_t packet_time = atol(fields[0].c_str());
 	for(unsigned int c=1;c<fields.size();c++){
 		vector<string> parts;
-		tokenize(fields[c], ":", parts);
-		if(parts.size() < 4){
+		tokenize(fields[c], "|", parts);
+		if(parts.size() != 3){
 			ERROR("Invalid format for the list of IPs.");
 			return;
 		}
 		PeerDatabase::Record r; 
-		r.hub.ip = parts[0];
-		r.hub.port = atoi(parts[1].c_str());
-		r.peer.ip = parts[2];
-		r.peer.port = atoi(parts[3].c_str()); 
-		r.last_update = time(0) - packet_time + atol(parts[4].c_str());
+		r.hub = URL(parts[0]);
+		r.peer = URL(parts[1]);
+		r.last_update = time(0) - packet_time + atol(parts[3].c_str());
 		
 		insert(r);
 	}
@@ -182,7 +175,7 @@ void PeerDatabase::loop(){
 				UNLOCK(mu,0);
 				
 				for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
-					bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+					bool reachable = _try_connect((*it).peer);
 					
 					// add the peer to the database
 					if(reachable){
@@ -205,12 +198,12 @@ void PeerDatabase::loop(){
 				
 				for(vector<Record>::iterator it = tmp.begin(); it != tmp.end(); it++){
 					// try to establish a connection to the peer. 
-					bool reachable = _try_connect((*it).peer.ip, (*it).peer.port);
+					bool reachable = _try_connect((*it).peer);
 					
 					// remove if unreachable and save in offline peers so that we can later reconnect
 					if(!reachable){
 						LOCK(mu,1);
-						LOG("PDB: removing unreachable host: "<<(*it).peer.ip<<":"<<(*it).peer.port);
+						LOG("PDB: removing unreachable host: "<<(*it).peer.url());
 						db.erase(db.find((*it).hash().hex()));
 						offline[(*it).hash().hex()] = (*it);
 						UNLOCK(mu,1);

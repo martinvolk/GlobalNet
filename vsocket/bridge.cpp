@@ -18,7 +18,7 @@ Node *BridgeNode::accept(){
 	return 0;
 }
 
-int BridgeNode::connect(const char *hostname, uint16_t port){
+int BridgeNode::connect(const URL &url){
 	ERROR("CON_connect not implemented!");
 	return -1;
 }
@@ -41,7 +41,7 @@ void BridgeNode::run(){
 	if(this->_output){
 		if(!(this->state & CON_STATE_CONNECTED) && this->_output->state & CON_STATE_CONNECTED){
 			if(this->_input){
-				this->_input->sendCommand(RELAY_CONNECT_OK, "", 0);
+				this->_input->sendCommand(RELAY_CONNECT_OK, "", 0, "");
 			}
 			LOG("BRIDGE: connection established on the remote end!");
 			this->state = CON_STATE_ESTABLISHED; 
@@ -56,7 +56,7 @@ void BridgeNode::run(){
 				// we send relay disconnect because we want to be able to save the connection on the remote 
 				// end. So simply doing close() here would be inappropriate because the client may want
 				// to reuse the already opened connection to the relay (us). 
-				this->_input->sendCommand(RELAY_DISCONNECT, "", 0);
+				this->_input->sendCommand(RELAY_DISCONNECT, "", 0, "");
 			}
 			this->state = CON_STATE_DISCONNECTED;
 		}
@@ -86,7 +86,7 @@ void BridgeNode::run(){
 		}
 	}
 }
-int BridgeNode::listen(const char *host, uint16_t port){
+int BridgeNode::listen(const URL &url){
 	ERROR("CON_listen not implemented!");
 	return -1;
 }

@@ -179,6 +179,7 @@ public:
 	}
 };
 
+
 struct Packet;
 
 
@@ -203,8 +204,9 @@ typedef enum {
 	CMD_CAN_ROUTE,
 	CMD_GET_PEER_LIST,
 	CMD_PEER_LIST, // list of active peers. (peer:port,peer2:port.. etc)
-	CMD_CONNECT,
+	CMD_ENCRYPT_BEGIN,
 	CMD_OUTBOUND_CONNECT,
+	CMD_CHAN_INIT,
 	
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
@@ -274,12 +276,12 @@ struct RoutingEntry{
 	Node *to;
 };
 
+class Channel;
 typedef int TCPSocket;
 typedef int UDPSocket;
-typedef map<string, RoutingEntry > RoutingTable;
-typedef map<Node*, RoutingEntry> RRTable;
+typedef map<Channel*, Channel*> ChannelList;
+typedef map<Node*, Node*> NodeList;
 typedef map<string, VSLNode*> PeerList;
-typedef list<Node*> NodeList;
 typedef VSLNode Peer;
 
 struct Network;
@@ -313,8 +315,7 @@ public:
 	
 	bool server_socket;
 	
-	string host;
-	uint16_t port;
+	URL url;
 	
 	double timer; 
 	
@@ -328,17 +329,15 @@ public:
 	// validated and converted into a packet that goes into packet_in
 	vector<char> _recv_buf; 
 	deque<Packet> _recv_packs;
-	  
-	static Node *createNode(const char *name);
 	
 	// virtual functions
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(const Packet &pack);
-	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	virtual void peg(Node *other);
@@ -350,6 +349,8 @@ public:
 	
 	void set_option(const string &opt, const string &val);
 	bool get_option(const string &opt, string &res);
+	
+	Network *m_pNetwork;
 private: 
 	map<string, string> options;
 	
@@ -357,30 +358,45 @@ private:
 	Node &operator=(const Node &other){ return *this; }
 }; 
 
+class PacketHandler{
+	public: 
+	virtual void handlePacket(const Packet &pack) = 0;
+};
+
+class SSLNode;
+class UDTNode;
+
 class VSLNode : public Node{
 public:
-	VSLNode(Node *next);
-	VSLNode(SocketType type);
-	
+	VSLNode();
 	virtual ~VSLNode();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	virtual int sendCommand(const Packet &pack);
 	virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
-	
+
 	virtual void set_output(Node *other);
 	virtual Node* get_output();
 	/*
 	virtual void set_input(Node *other);
 	virtual Node* get_input();*/
+	void setPacketHandler(const string &tag, PacketHandler *handler);
+	void removePacketHandler(const string &tag);
+	void do_handshake(SocketType type); 
 private:
+	SSLNode *ssl;
+	UDTNode *udt;
+	
+	map<string, Channel*> m_Channels;
+	map<string, PacketHandler*> m_PacketHandlers; 
+	
 	void _handle_packet(const Packet &packet);
 };
 
@@ -391,18 +407,22 @@ public:
 	
 	virtual ~SSLNode();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	//virtual void peg(Node *other);
 	virtual void close();
+	
+	void do_handshake(SocketType type);
+	
 private: 
 	void _init_ssl_socket(bool server_socket);
+	void _close_ssl_socket();
 	SSL_CTX *ctx;
 	SSL *ssl; 
 };
@@ -412,12 +432,12 @@ public:
 	TCPNode();
 	virtual ~TCPNode();
 
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
@@ -431,12 +451,12 @@ public:
 	UDTNode();
 	virtual ~UDTNode();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
@@ -448,12 +468,12 @@ class BridgeNode : public Node{
 public:
 	BridgeNode();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	//virtual void peg(Node *other);
@@ -481,12 +501,12 @@ public:
 		time_t last_event; 
 	};
 	
-	//virtual int connect(const char *host, uint16_t port);
+	//virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	//virtual void peg(Node *other);
@@ -502,12 +522,12 @@ public:
 	LinkNode();
 	virtual ~LinkNode();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
 	virtual void close();
@@ -519,18 +539,43 @@ public:
 	NodeAdapter(Node *other);
 	virtual ~NodeAdapter();
 	
-	virtual int connect(const char *host, uint16_t port);
+	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int listen(const char *host, uint16_t port);
+	virtual int listen(const URL &url);
 	//virtual Node* accept();
 	//virtual void run();
 	//virtual void close();
 private: 
 	Node *other;
 	MemoryNode *memnode;
+};
+
+class Channel : public Node, public PacketHandler{
+public:
+	Channel(VSLNode *link, const string &tag = "");
+	virtual ~Channel();
+	
+	// this will connect further at the remote end of connection node
+	virtual int connect(const URL &url);
+	
+	// send and receive data to and from the remote end of the channel (use after you have done a "connect)
+	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
+	//virtual int recvCommand(Packet *pack);
+	virtual int listen(const URL &url);
+	virtual Node* accept();
+	virtual void run();
+	virtual void close();
+	
+	virtual void handlePacket(const Packet &pack);
+private: 
+	Node *m_pRelay;
+	VSLNode *m_pLink;
+	string m_sHash;
 };
 
 class MemoryNode : public Node{
@@ -543,10 +588,10 @@ public:
 	
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
-	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size);
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
-	virtual int connect(const char *host, uint16_t port);
-	virtual int listen(const char *host, uint16_t port){state = CON_STATE_LISTENING; return 1;}
+	virtual int connect(const URL &url);
+	virtual int listen(const URL &url){state = CON_STATE_LISTENING; return 1;}
 	virtual void close(){state = CON_STATE_DISCONNECTED;}
 	//virtual Node* accept();
 	virtual void run();
@@ -613,37 +658,29 @@ typedef enum{
 	CAN_CONNECT_OUTGOING		= 1<<1, // the router can establish outgoing connections
 }PeerCapability; 
 
-struct PeerAddress{
-public:
-	PeerAddress():ip("0.0.0.0"), port(0){}
-	PeerAddress(const string &_ip, uint16_t _port):ip(_ip), port(_port){}
-	bool is_local(){ return inet_ip_is_local(ip); }
-	bool is_valid(){ return port != 0 && ip.compare("0.0.0.0") != 0; }
-	string ip;
-	uint16_t port;
-};
-
 // info that is sent over the network 
 struct PeerInfo{
-	PeerAddress listen_address;
+	URL listen_address;
 	PeerCapability caps; 
 };
 
 class PeerDatabase{
 public:
 	struct Record{
-		PeerAddress hub;		// address to the peer we received this record from (ie the hub)
-		PeerAddress peer;	// address of the peer
+		URL hub;
+		URL peer;
 		PeerCapability caps; // capabilities of this peer 
 		time_t last_update; // last time this record has been updated 
 		
 		Record():
-			hub("0.0.0.0", 0),
-			peer("0.0.0.0", 0),
+			hub("nil://0.0.0.0:0"),
+			peer("nil://0.0.0.0:0"),
 			last_update(0){
 				
 		}
-		Record(const Record &other){
+		Record(const Record &other):
+			hub("nil://0.0.0.0:0"),
+			peer("nil://0.0.0.0:0"){
 			this->hub = other.hub;
 			this->peer = other.peer;
 			this->last_update = other.last_update;
@@ -656,7 +693,7 @@ public:
 		}
 		SHA1Hash hash() const{
 			stringstream ss;
-			ss<<hub.ip<<hub.port<<peer.ip<<peer.port; 
+			ss<<hub.url()<<"#"<<peer.url();
 			return SHA1Hash::compute(ss.str());
 		}
 		bool operator<(const Record &other) const {
@@ -691,11 +728,12 @@ public:
 	Network();
 	~Network();
 	
-	
-	Node *createLink(const string &path);
-	Node *createTunnel(const string &host, uint16_t port);
-	VSLNode *connect(const char *hostname, int port);
+	Node *createTunnel(const URL &destination, unsigned int length = 3);
+	Node *connect(const URL &url);
 	void run();
+	void registerPeer(VSLNode *peer) {peers[peer->url.url()] = peer; }
+	Node *createNode(const string &type);
+	void free(Node *node);
 	
 	VSLNode *server; 
 	
@@ -706,41 +744,8 @@ public:
 	
 	PeerDatabase peer_db;
 	
-	class PeerListener{
-		public:
-		virtual void handlePacket(const Packet &pack) = 0;
-	};
-	/*
-	class Peer{
-	public:
-		Peer(VSLNode *socket);
-		~Peer();
-		
-		void loop();
-		void sendPeerList(const vector<PeerDatabase::Record> &peers);
-		int recvCommand(Packet *pack);
-		int sendCommand(NodeMessage msg, const char *data, size_t size);
-		bool is_connected();
-		bool is_disconnected();
-		void run();
-		PeerAddress address;
-		time_t last_peer_list_submit; 
-		PeerAddress listen_addr;
-	private:
-		
-		
-		bool running;
-		VSLNode *socket;
-		PeerListener *listener;
-		bool peer_info_received;
-		pthread_mutex_t *mu;
-		pthread_t *worker;
-	};
-	*/ 
-	map<string, pair<Node*, Node*> > accept_table;
-	map<string, pair<string, Node*> > forward_table;
-	map<string, Node*> outbound_table;
-	
+	NodeList connections;
+	ChannelList channels;
 	PeerList peers;
 private:
 	time_t last_peer_list_broadcast;

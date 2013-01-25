@@ -80,6 +80,34 @@ void SSLNode::_init_ssl_socket(bool server_socket){
 	sock->server_socket = server_socket;
 }
 
+void SSLNode::_close_ssl_socket(){
+	if(this->ssl){
+		SSL_shutdown(this->ssl);
+		SSL_free(this->ssl);
+		if(this->ctx)
+			SSL_CTX_free(this->ctx);
+		// restore bios because we are using them in other places and ssl retardedly frees them. 
+		this->read_buf = BIO_new(BIO_s_mem());
+		this->write_buf = BIO_new(BIO_s_mem());
+		BIO_set_mem_eof_return(this->read_buf, -1);
+		BIO_set_mem_eof_return(this->write_buf, -1);
+	}
+	this->ssl = 0;
+	this->ctx = 0;
+}
+
+void SSLNode::do_handshake(SocketType type){
+	if(server_socket && type == SOCK_CLIENT){
+		_close_ssl_socket();
+		_init_ssl_socket(false);
+	}
+	else if(!server_socket && type == SOCK_SERVER){
+		_close_ssl_socket();
+		_init_ssl_socket(true);
+	}
+	// do a rehandshake
+}
+
 int SSLNode::recv(char *data, size_t size, size_t minsize){
 	if(BIO_ctrl_pending(this->in_read) < minsize) return 0;
 	return BIO_read(this->in_read, data, size);
@@ -89,7 +117,7 @@ int SSLNode::send(const char *data, size_t size, size_t minsize){
 	return BIO_write(this->in_write, data, size);
 }
 
-int SSLNode::connect(const char *host, uint16_t port){
+int SSLNode::connect(const URL &url){
 	// since the connect call is meaningless for SSL node without an underlying socket
 	// we forward it to the next node, but as a command. 
 	if(!(this->state & CON_STATE_INITIALIZED)){
@@ -101,7 +129,7 @@ int SSLNode::connect(const char *host, uint16_t port){
 		// initialize ssl client method 
 		_init_ssl_socket(false);
 		
-		this->_output->connect(host, port);
+		this->_output->connect(url);
 		return 1;
 	}
 	return -1;
@@ -117,8 +145,7 @@ Node *SSLNode::accept(){
 			
 			con->_init_ssl_socket(true);
 			
-			con->host = peer->host;
-			con->port = peer->port;
+			con->url = peer->url;
 			
 			con->_output = peer;
 			
@@ -133,17 +160,16 @@ Node *SSLNode::accept(){
 	return 0;
 }
 
-int SSLNode::listen(const char *host, uint16_t port){
+int SSLNode::listen(const URL &url){
 	if(!(this->state & CON_STATE_INITIALIZED)){
 		ERROR("CAN ONLY USE LISTEN ON A NEWLY CREATED SOCKET!");
 		return -1;
 	}
 	
 	if(this->_output){
-		if(this->_output->listen(host, port)>0){
+		if(this->_output->listen(url)>0){
 			_init_ssl_socket(true);
-			this->host = this->_output->host;
-			this->port = this->_output->port;
+			this->url = this->_output->url;
 			return 1;
 		}
 	}
@@ -165,11 +191,11 @@ void SSLNode::run(){
 	// to being connected, we can now switch to handshake mode and do the handshake. 
 	if((this->state & CON_STATE_INITIALIZED) && this->ssl && this->ctx && (this->_output->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
-		this->host = this->_output->host;
-		this->port = this->_output->port;
+		this->url = this->_output->url;
 		
 		this->timer = milliseconds();
 		this->state = CON_STATE_SSL_HANDSHAKE; 
+		LOG("SSL: initializing handshake..");
 	}
 	if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_DISCONNECTED){
 		this->state = CON_STATE_DISCONNECTED; 
@@ -183,12 +209,12 @@ void SSLNode::run(){
 			this->_output->run();
 			while(!BIO_eof(this->write_buf)){
 				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-					LOG("SSL: sending "<<rc<<" bytes of encrypted data.");
+					LOG("SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
 					this->_output->send(tmp, rc);
 				}
 			}
 			if((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
-				LOG("SSL: received "<<rc<<" bytes of encrypted data.");
+				LOG("SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
 				BIO_write(this->read_buf, tmp, rc);
 			}
 		}
@@ -208,24 +234,22 @@ void SSLNode::run(){
 			return;
 		}
 		if(this->server_socket == false){
-			LOG("SSL: Attempting to connect to "<<this->host<<":"<<this->port);
+			//LOG("SSL: Attempting to connect to "<<url.url());
 			if((res = SSL_connect(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->host = this->_output->host;
-				this->port = this->_output->port;
-				LOG("ssl connection succeeded! Connected to peer "<<this->host<<":"<<this->port);
+				this->url = this->_output->url;
+				LOG("ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
 			}
 		}
 		else {
-			LOG("SSL: accepting ssl connections on "<<this->host<<":"<<this->port);
+			//LOG("SSL: accepting ssl connections on "<<url.url());
 			if((res=SSL_accept(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->host = this->_output->host;
-				this->port = this->_output->port;
-				LOG("ssl connection succeeded! Connected to peer "<<this->host<<":"<<this->port);
+				this->url = this->_output->url;
+				LOG("ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
@@ -238,17 +262,17 @@ void SSLNode::run(){
 	if(this->state & CON_STATE_CONNECTED){
 		if((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
 			if((rc = SSL_write(this->ssl, tmp, rc))<=0){
-				LOG("error sending ssl to "<<this->host<<":"<<this->port<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
+				LOG("error sending ssl to "<<url.url()<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
 				ERR_SSL(rc);
 			}
 			
 			if(rc>0){
-				//LOG("[SSL] send: "<<this->host<<":"<<this->port<<" length: "<<rc<<" ");
+				//LOG("[SSL] send: "<<url.url()<<" length: "<<rc<<" ");
 				//LOG(hexencode(tmp, rc));
 			}
 		}
 		if((rc = SSL_read(this->ssl, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("[SSL] recv: "<<this->host<<":"<<this->port<<" length: "<<rc<<" ");
+			//LOG("[SSL] recv: "<<url.url()<<" length: "<<rc<<" ");
 			BIO_write(this->in_read, tmp, rc);
 			
 			//LOG(hexencode(tmp, rc));
@@ -303,9 +327,11 @@ SSLNode::SSLNode(SocketType type){
 	
 	if(type == SOCK_SERVER){
 		_init_ssl_socket(true);
+		server_socket = true;
 	}
 	else if(type == SOCK_CLIENT){
 		_init_ssl_socket(false);
+		server_socket = false;
 	}
 }
 
@@ -313,14 +339,7 @@ SSLNode::~SSLNode(){
 	if(!(this->state & CON_STATE_INVALID))
 		this->close();
 	
-	// free ssl variables
-	if(this->ssl){
-		SSL_shutdown(this->ssl);
-		SSL_free(this->ssl);
-		if(this->ctx)
-			SSL_CTX_free(this->ctx);
-	}
-	read_buf = write_buf = 0; // freed by ssl
+	_close_ssl_socket();
 	
-	LOG("SSL: deleted "<<this->host<<":"<<this->port);
+	LOG("SSL: deleted "<<url.url());
 }
