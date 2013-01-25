@@ -297,10 +297,12 @@ string errorstring(int e);
 string hexencode(const char *data, size_t size);
 
 
+class Network;
+
 // a connection node
 class Node{
 public:
-	Node();
+	Node(Network *net);
 	virtual ~Node();
 	
 	NodeType type;
@@ -368,7 +370,7 @@ class UDTNode;
 
 class VSLNode : public Node{
 public:
-	VSLNode();
+	VSLNode(Network *net);
 	virtual ~VSLNode();
 	
 	virtual int connect(const URL &url);
@@ -402,8 +404,8 @@ private:
 
 class SSLNode : public Node{
 public:
-	SSLNode();
-	SSLNode(SocketType type);
+	SSLNode(Network *net);
+	SSLNode(Network *net, SocketType type);
 	
 	virtual ~SSLNode();
 	
@@ -429,7 +431,7 @@ private:
 
 class TCPNode : public Node{
 public:
-	TCPNode();
+	TCPNode(Network *net);
 	virtual ~TCPNode();
 
 	virtual int connect(const URL &url);
@@ -448,7 +450,7 @@ private:
 
 class UDTNode : public Node{
 public:
-	UDTNode();
+	UDTNode(Network *net);
 	virtual ~UDTNode();
 	
 	virtual int connect(const URL &url);
@@ -466,7 +468,7 @@ private:
 
 class BridgeNode : public Node{
 public:
-	BridgeNode();
+	BridgeNode(Network *net);
 	
 	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
@@ -482,7 +484,7 @@ public:
 
 class SocksNode : public Node{
 public:
-	SocksNode();
+	SocksNode(Network *net);
 	virtual ~SocksNode();
 	
 	struct socks_t{
@@ -519,7 +521,7 @@ private:
 
 class LinkNode : public Node{
 public:
-	LinkNode();
+	LinkNode(Network *net);
 	virtual ~LinkNode();
 	
 	virtual int connect(const URL &url);
@@ -536,7 +538,7 @@ public:
 class MemoryNode;
 class NodeAdapter : public Node{
 public:
-	NodeAdapter(Node *other);
+	NodeAdapter(Network *net, Node *other);
 	virtual ~NodeAdapter();
 	
 	virtual int connect(const URL &url);
@@ -555,7 +557,7 @@ private:
 
 class Channel : public Node, public PacketHandler{
 public:
-	Channel(VSLNode *link, const string &tag = "");
+	Channel(Network *net, VSLNode *link, const string &tag = "");
 	virtual ~Channel();
 	
 	// this will connect further at the remote end of connection node
@@ -580,7 +582,7 @@ private:
 
 class MemoryNode : public Node{
 public:
-	MemoryNode();
+	MemoryNode(Network *net);
 	virtual ~MemoryNode();
 	
 	int sendOutput(const char *data, size_t size, size_t min=0);
@@ -618,6 +620,7 @@ public:
 	
 	Packet(){
 		cmd.code = -1;
+		cmd.size = 0;
 	}
 	
 	Packet(const Packet &other){
@@ -731,7 +734,7 @@ public:
 	Node *createTunnel(const URL &destination, unsigned int length = 3);
 	Node *connect(const URL &url);
 	void run();
-	void registerPeer(VSLNode *peer) {peers[peer->url.url()] = peer; }
+	void registerPeer(VSLNode *peer);
 	Node *createNode(const string &type);
 	void free(Node *node);
 	

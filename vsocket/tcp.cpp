@@ -69,7 +69,7 @@ Node *TCPNode::accept(){
 	}
 	if((z = accept4(this->socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		
-		con = new TCPNode();
+		con = new TCPNode(m_pNetwork);
 		//NET_createConnection(this->net, "tcp", false);
 		
 		char host[NI_MAXHOST];
@@ -225,7 +225,7 @@ void TCPNode::close(){
 	LOG("TCP: disconnected!");
 }
 
-TCPNode::TCPNode(){
+TCPNode::TCPNode(Network *net):Node(net){
 	this->type = NODE_TCP;
 }
 

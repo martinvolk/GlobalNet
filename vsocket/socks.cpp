@@ -16,8 +16,9 @@ typedef enum{
 
 #define SOCKS_TIMEOUT 10
 
-SocksNode::SocksNode():
-	listen_socket(new TCPNode()){
+SocksNode::SocksNode(Network *net):
+	Node(net),
+	listen_socket(new TCPNode(net)){
 	
 }
 
@@ -128,7 +129,7 @@ void SocksNode::run(){
 			}
 		}
 		if(state.socks.atype == 3 && state.state & SOCKS_STATE_6){
-			unsigned char port;
+			uint16_t port;
 			if(c->recv((char*)&port, 2, 2)==2){
 				c->set_option("socks_request_port", VSL::to_string(ntohs(port)));
 				state.state = SOCKS_STATE_8;

@@ -45,7 +45,7 @@ Node *VSLNode::accept(){
 	if((peer = this->_output->accept())){
 		// the output has a new stream connected. 
 		// we need to create a new PEER node that will handle this new connection. 
-		VSLNode *con = new VSLNode();
+		VSLNode *con = new VSLNode(m_pNetwork);
 		
 		// the new connection is technically not connected. 
 		// it will become connected once "peer" has become connected. 
@@ -127,7 +127,7 @@ int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size, const s
 }
 
 int VSLNode::sendCommand(const Packet &pack){
-	if(pack.cmd.code == CMD_DATA) LOG("SENDING "<<pack.cmd.size<<" bytes data to "<<url.url());
+	LOG("VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
@@ -152,6 +152,7 @@ void VSLNode::removePacketHandler(const string &tag){
 }
 
 void VSLNode::do_handshake(SocketType type){
+	this->state = CON_STATE_CONNECTING;
 	ssl->do_handshake(type); 
 }
 /**
@@ -168,7 +169,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 		LOG("VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
 		map<string, Channel*>::iterator it = m_Channels.find(packet.cmd.hash.hex());
 		if(it == m_Channels.end()){
-			Channel *chan = new Channel(this, packet.cmd.hash.hex());
+			Channel *chan = new Channel(m_pNetwork, this, packet.cmd.hash.hex());
 			m_Channels[packet.cmd.hash.hex()] = chan;
 		}
 		else{
@@ -233,7 +234,7 @@ void VSLNode::run(){
 		// all this data belongs in a DATA packet. This data could not have been
 		// directly writen to write_buf precisely because it needs to be formatted. 
 		while((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("[sending data] "<<rc<<" bytes to "<<url.url());
+			LOG("[sending data] "<<rc<<" bytes to "<<url.url());
 			
 			this->sendCommand(CMD_DATA, tmp, rc, "");
 		}
@@ -258,13 +259,16 @@ void VSLNode::run(){
 				// now we need to check if the packet is complete
 				PacketHeader *cmd = (PacketHeader*)&this->_recv_buf[0];
 				Packet packet;
+				if(cmd->size > ARRSIZE(packet.data)){
+					ERROR("Packet exceeds maximum allowed size! ");
+					close();
+					return;
+				}
+				
 				if(cmd->size <= this->_recv_buf.size()-sizeof(PacketHeader)){
 					// check checksum here
 					unsigned size = min(ARRSIZE(packet.data), (unsigned long)cmd->size);
-					if(size < cmd->size){
-						ERROR("Packet exceeds maximum allowed size!");
-						return;
-					}
+					
 					memcpy(packet.data, &this->_recv_buf[0]+sizeof(PacketHeader), size);
 					memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
 					packet.data[size] = 0;
@@ -346,9 +350,9 @@ Node* VSLNode::get_input(){
 }
 */
 
-VSLNode::VSLNode(){
-	ssl = new SSLNode();
-	udt = new UDTNode();
+VSLNode::VSLNode(Network *net):Node(net){
+	ssl = new SSLNode(net);
+	udt = new UDTNode(net);
 	
 	ssl->_output = udt;
 	udt->_input = ssl;

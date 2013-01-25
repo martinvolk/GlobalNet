@@ -97,15 +97,19 @@ void SSLNode::_close_ssl_socket(){
 }
 
 void SSLNode::do_handshake(SocketType type){
-	if(server_socket && type == SOCK_CLIENT){
-		_close_ssl_socket();
-		_init_ssl_socket(false);
+	if(type == SOCK_CLIENT){
+		if(server_socket) _close_ssl_socket();
+		if(!ssl) _init_ssl_socket(false);
 	}
-	else if(!server_socket && type == SOCK_SERVER){
-		_close_ssl_socket();
-		_init_ssl_socket(true);
+	else if(type == SOCK_SERVER){
+		if(!server_socket) _close_ssl_socket();
+		if(!ssl) _init_ssl_socket(true);
 	}
-	// do a rehandshake
+	else{
+		ERROR("SSL: UNSUPPORTED SOCKET TYPE!");
+	}
+	timer = milliseconds();
+	state = CON_STATE_SSL_HANDSHAKE; 
 }
 
 int SSLNode::recv(char *data, size_t size, size_t minsize){
@@ -124,7 +128,7 @@ int SSLNode::connect(const URL &url){
 		ERROR("CAN ONLY USE CONNECT ON A NEWLY CREATED SOCKET!");
 		return -1;
 	}
-	
+	timer = milliseconds();
 	if(this->_output){
 		// initialize ssl client method 
 		_init_ssl_socket(false);
@@ -141,7 +145,7 @@ Node *SSLNode::accept(){
 	if(this->_output){
 		Node *peer = this->_output->accept();
 		if(peer){
-			SSLNode *con = new SSLNode();
+			SSLNode *con = new SSLNode(m_pNetwork);
 			
 			con->_init_ssl_socket(true);
 			
@@ -209,12 +213,12 @@ void SSLNode::run(){
 			this->_output->run();
 			while(!BIO_eof(this->write_buf)){
 				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-					LOG("SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
+					//LOG("SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
 					this->_output->send(tmp, rc);
 				}
 			}
 			if((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
-				LOG("SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
+				//LOG("SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
 				BIO_write(this->read_buf, tmp, rc);
 			}
 		}
@@ -313,7 +317,7 @@ void SSLNode::close(){
 	
 	LOG("SSL: disconnected!");
 }
-SSLNode::SSLNode(){
+SSLNode::SSLNode(Network *net):Node(net){
 	this->state = CON_STATE_INITIALIZED;
 	
 	this->ssl = 0;
@@ -322,8 +326,11 @@ SSLNode::SSLNode(){
 	this->type = NODE_SSL;
 }
 
-SSLNode::SSLNode(SocketType type){
-	SSLNode();
+SSLNode::SSLNode(Network *net, SocketType type):Node(net){
+	this->state = CON_STATE_INITIALIZED;
+	this->ssl = 0;
+	this->ctx = 0;
+	this->type = NODE_SSL;
 	
 	if(type == SOCK_SERVER){
 		_init_ssl_socket(true);

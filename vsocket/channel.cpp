@@ -1,6 +1,6 @@
 #include "local.h"
 
-Channel::Channel(VSLNode *link, const string &hash):
+Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
 	m_pRelay(0), m_pLink(link){
 	
 	if(!hash.length()){
@@ -10,10 +10,12 @@ Channel::Channel(VSLNode *link, const string &hash):
 		p.cmd.code = CMD_CHAN_INIT;
 		p.cmd.hash = SHA1Hash::compute(ss.str());
 		m_sHash = p.cmd.hash.hex();
+		LOG("CHANNEL: setting up new channel with "<<m_pLink->url.url());
 		m_pLink->sendCommand(p);
 	} else {
 		m_sHash = hash;
 	}
+	state = CON_STATE_ESTABLISHED; 
 	m_pLink->setPacketHandler(m_sHash, this);
 }
 
@@ -38,9 +40,14 @@ void Channel::handlePacket(const Packet &pack){
 	}
 	else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
 		LOG("CHANNEL: ENCRYPT_BEGIN from "<<m_pLink->url.url());
-		VSLNode *node = new VSLNode();
-		node->set_output(this);
+		VSLNode *node = new VSLNode(m_pNetwork);
+		node->url = URL("vsl://"+m_sHash);
+		
+		NodeAdapter *adapter = new NodeAdapter(m_pNetwork, node);
+		
 		node->do_handshake(SOCK_SERVER);
+		m_pRelay = adapter; 
+		
 		m_pNetwork->registerPeer(node);
 	}
 	
@@ -48,11 +55,8 @@ void Channel::handlePacket(const Packet &pack){
 		URL url = URL(pack.data);
 		LOG("CHANNEL: got relay connect from "<<m_pLink->url.url()<<": "<<url.url());
 		// this will either return an existing connection or establish a new one
-		if(url.protocol().compare("tcp") == 0){
-			Node *con = new TCPNode();
-			con->connect(url);
-			m_pRelay = con;
-		}
+		Node *con = m_pNetwork->connect(url);
+		m_pRelay = con;
 	}
 }
 

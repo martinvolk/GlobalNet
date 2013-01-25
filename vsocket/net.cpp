@@ -82,7 +82,7 @@ Network::Network(){
 	// use this function to initialize the UDT library
 	UDT::startup();
 	
-	this->server = new VSLNode();
+	this->server = new VSLNode(this);
 	
 	vector< pair<string, string> > ifs = inet_get_interfaces();
 	string listen_adr = "127.0.0.1";
@@ -122,6 +122,15 @@ Peer *Network::getRandomPeer(){
 	}
 	return 0;
 }
+
+void Network::registerPeer(VSLNode *peer){
+	map<string, VSLNode*>::iterator it = peers.find(peer->url.url());
+	if(it != peers.end()){
+		ERROR("NET: trying to register peer twice! URL: "<<peer->url.url());
+		return;
+	}
+	peers[peer->url.url()] = peer;
+}
 /**
 Create a new tunnel to the url that is specified in the argument. 
 
@@ -157,9 +166,11 @@ connection to google and connect to yahoo instead.
 
 Node *Network::createTunnel(const URL &url, unsigned int length){
 	vector<PeerDatabase::Record> random = this->peer_db.random(length);
-	if(random.size() < length){
+	if(random.size() && random.size() < length){
 		ERROR("NET: NOT ENOUGH PEERS TO ESTABLISH CONNECTION OF LENGTH "<< 
 		length);
+		// pad for testing..
+		while(random.size()<length) random.push_back(random[0]);
 	}
 	if(!random.size()) return 0;
 	
@@ -173,16 +184,20 @@ Node *Network::createTunnel(const URL &url, unsigned int length){
 	// subsequent peers. 
 	for(unsigned int c = 1; c<random.size(); c++){
 		// does a relay connect to the next peer. 
+		LOG("NET: connecting to intermediate hop: "<<random[c].peer.url());
 		parent->connect(random[c].peer);
 		// put the remote channel into encryption mode and create a new 
 		// encryption node that will encrypt all the traffic. 
 		parent->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
-		VSLNode *node = new VSLNode();
+		
+		VSLNode *node = new VSLNode(this);
 		node->set_output(parent);
 		node->do_handshake(SOCK_CLIENT);
+		parent->url = node->url = URL("vsl://"+VSL::to_string(rand()));
+		
 		registerPeer(node);
 		
-		Channel *chan = new Channel(node);
+		Channel *chan = new Channel(this, node);
 		channels[chan] = chan; 
 		parent = chan;
 	}
@@ -205,7 +220,7 @@ Node *Network::connect(const URL &url){
 		VSLNode *node = 0;
 		if(it == peers.end()){
 			LOG("NET: connecting to peer "<<url.url());
-			node = new VSLNode();
+			node = new VSLNode(this);
 			node->connect(url);
 			peers[url.url()] = node;
 			
@@ -216,15 +231,18 @@ Node *Network::connect(const URL &url){
 		else {
 			node = (*it).second;
 		}
-		Channel *chan = new Channel(node);
+		Channel *chan = new Channel(this, node);
 		channels[chan] = chan;
 		return chan;
 	}
 	else if(url.protocol().compare("tcp") == 0){
-		TCPNode *tcp = new TCPNode();
+		TCPNode *tcp = new TCPNode(this);
 		tcp->connect(url);
 		connections[tcp] = tcp;
 		return tcp;
+	}
+	else {
+		ERROR("NET: connect: INVALID PROTOCOL: "<<url.protocol());
 	}
 	return 0;
 }
@@ -445,19 +463,19 @@ LinkNode *Network::createCircuit(unsigned int length){
 
 Node *Network::createNode(const string &name){
 	if(name.compare("vsl")==0){
-		return new VSLNode();
+		return new VSLNode(this);
 	}
 	else if(name.compare("tcp")==0){
-		return new TCPNode();
+		return new TCPNode(this);
 	}
 	else if(name.compare("udt")==0){
-		return new UDTNode();
+		return new UDTNode(this);
 	}
 	else if(name.compare("ssl")==0){
-		return new SSLNode();
+		return new SSLNode(this);
 	}
 	else if(name.compare("socks")==0){
-		return new SocksNode();
+		return new SocksNode(this);
 	}
 	else{
 		ERROR("Unknown socket type '"<<name<<"'");

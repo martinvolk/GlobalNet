@@ -65,7 +65,8 @@ void Node::close(){
 	ERROR("CONNECTION: close() has to be implemented!");
 }
 
-Node::Node(){
+Node::Node(Network *net){
+	m_pNetwork = net;
 	this->_output = 0;
 	this->_input = 0;
 	this->type = NODE_NONE;
@@ -150,8 +151,8 @@ Node::~Node(){
 	
 }
 
-NodeAdapter::NodeAdapter(Node *other):other(other){
-	this->memnode = new MemoryNode();
+NodeAdapter::NodeAdapter(Network *net, Node *other):Node(net), other(other){
+	this->memnode = new MemoryNode(net);
 	other->set_output(memnode);
 }
 

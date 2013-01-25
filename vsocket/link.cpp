@@ -154,7 +154,7 @@ void LinkNode::close(){
 	this->_output->close();
 }
 
-LinkNode::LinkNode(){ 
+LinkNode::LinkNode(Network *net):Node(net){ 
 	this->type = NODE_LINK;
 	this->state = CON_STATE_INITIALIZED;
 }

@@ -27,7 +27,7 @@ Node *UDTNode::accept(){
 			 return 0;
 		}
 		
-		UDTNode *conn = new UDTNode();
+		UDTNode *conn = new UDTNode(m_pNetwork);
 		char clientservice[NI_MAXSERV];
 		char host[NI_MAXHOST];
 		
@@ -234,7 +234,7 @@ void UDTNode::close(){
 	//LOG("UDT: disconnected!");
 }
 
-UDTNode::UDTNode(){
+UDTNode::UDTNode(Network *net):Node(net){
 	this->type = NODE_UDT;
 }
 

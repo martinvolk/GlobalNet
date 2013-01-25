@@ -7,7 +7,7 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
-BridgeNode::BridgeNode(){
+BridgeNode::BridgeNode(Network *net):Node(net){
 	type = NODE_BRIDGE;
 }
 
