@@ -239,7 +239,7 @@ void VSLNode::run(){
 			this->sendCommand(CMD_DATA, tmp, rc, "");
 		}
 		
-		/// now we process our write_buf and fill read_buf with data from _ouput
+		/// now we process our write_buf and fill with data from _ouput
 		
 		// send unsent data 
 		while(this->_output && !BIO_eof(this->write_buf)){
@@ -247,59 +247,98 @@ void VSLNode::run(){
 			int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
 			this->_output->send(tmp, rc);
 		}
-		
-		// attempt to receive some data from the underlying connection and decode it
 		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
-			int start = this->_recv_buf.size();
-			this->_recv_buf.resize(this->_recv_buf.size()+rc);
-			memcpy(&this->_recv_buf[start], tmp, rc);
-			
-			// try to read as many complete packets as possible from the recv buf
-			while(this->_recv_buf.size()){
-				// now we need to check if the packet is complete
-				PacketHeader *cmd = (PacketHeader*)&this->_recv_buf[0];
-				Packet packet;
-				if(cmd->size > ARRSIZE(packet.data)){
-					ERROR("Packet exceeds maximum allowed size! ");
+			BIO_write(m_pPacketBuf, tmp, rc);
+		}
+		
+		/*
+		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
+		int start = this->_recv_buf.size();
+		this->_recv_buf.resize(this->_recv_buf.size()+rc);
+		memcpy(&this->_recv_buf[start], tmp, rc);
+
+		// try to read as many complete packets as possible from the recv buf
+		while(this->_recv_buf.size()){
+			// now we need to check if the packet is complete
+			PacketHeader *cmd = (PacketHeader*)&this->_recv_buf[0];
+			Packet packet;
+			if(cmd->size > ARRSIZE(packet.data)){
+							ERROR("Packet exceeds maximum allowed size! ");
+							close();
+							return;
+			}
+
+			if(cmd->size <= this->_recv_buf.size()-sizeof(PacketHeader)){
+							// check checksum here
+							unsigned size = min(ARRSIZE(packet.data), (unsigned long)cmd->size);
+
+							memcpy(packet.data, &this->_recv_buf[0]+sizeof(PacketHeader), size);
+							memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
+							packet.data[size] = 0;
+							packet.source = this;
+
+							//LOG("CON_process: received complete packet at "<<url.url()<<" cmd: "<<
+							//      packet.cmd.code<<" datalength: "<<rc);
+							//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
+
+							// if we have an output socket then we write the received data directly to that socket
+							//LOG(this->bridge);
+							map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(packet.cmd.hash.hex());
+							if(h != m_PacketHandlers.end()){
+											LOG("VSL: passing packet to listener "<<packet.cmd.hash.hex());
+											(*h).second->handlePacket(packet);
+							}
+							else {
+											LOG("VSL: handling packet "<<packet.cmd.hash.hex());
+											_handle_packet(packet);
+							}
+							this->_recv_packs.push_back(packet);
+
+							// update the recv_buf to only have the trailing data that has not 
+							// yet been decoded. 
+							this->_recv_buf = vector<char>(
+											this->_recv_buf.begin()+cmd->size+sizeof(PacketHeader),
+											this->_recv_buf.end());
+			} else {
+							LOG("CON_process: received partial data of "<<rc<< " bytes "<<(this->_recv_buf.size()-sizeof(PacketHeader)));
+							break;
+			}
+				}
+		}
+		}
+*/
+		
+		// if enough data is in the buffer, we decode the packet 
+		if(!m_bPacketReadInProgress){
+			if(BIO_ctrl_pending(m_pPacketBuf) >= sizeof(m_CurrentPacket.cmd)){
+				LOG("VSL: reading packet header..");
+				m_bPacketReadInProgress = true;
+				BIO_read(m_pPacketBuf, &m_CurrentPacket.cmd, sizeof(m_CurrentPacket.cmd));
+				if(!m_CurrentPacket.cmd.is_valid()){
+					ERROR("VSL: "<<url.url()<<": CORRUPTED PACKET STREAM!");
 					close();
 					return;
 				}
-				
-				if(cmd->size <= this->_recv_buf.size()-sizeof(PacketHeader)){
-					// check checksum here
-					unsigned size = min(ARRSIZE(packet.data), (unsigned long)cmd->size);
-					
-					memcpy(packet.data, &this->_recv_buf[0]+sizeof(PacketHeader), size);
-					memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
-					packet.data[size] = 0;
-					packet.source = this;
-					
-					//LOG("CON_process: received complete packet at "<<url.url()<<" cmd: "<<
-					//	packet.cmd.code<<" datalength: "<<rc);
-					//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
-					
-					// if we have an output socket then we write the received data directly to that socket
-					//LOG(this->bridge);
-					map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(packet.cmd.hash.hex()); 
-					if(h != m_PacketHandlers.end()){
-						LOG("VSL: passing packet to listener "<<packet.cmd.hash.hex());
-						(*h).second->handlePacket(packet);
-					}
-					else {
-						LOG("VSL: handling packet "<<packet.cmd.hash.hex());
-						_handle_packet(packet);
-					}
-					this->_recv_packs.push_back(packet);
-					
-					// update the recv_buf to only have the trailing data that has not 
-					// yet been decoded. 
-					this->_recv_buf = vector<char>(
-						this->_recv_buf.begin()+cmd->size+sizeof(PacketHeader), 
-						this->_recv_buf.end());
-				} else {
-					LOG("CON_process: received partial data of "<<rc<< " bytes "<<(this->_recv_buf.size()-sizeof(PacketHeader)));
-					break;
+			}
+		}
+		else {
+			if(BIO_ctrl_pending(m_pPacketBuf) >= m_CurrentPacket.cmd.size){
+				BIO_read(m_pPacketBuf, m_CurrentPacket.data, m_CurrentPacket.cmd.size);
+				m_CurrentPacket.data[m_CurrentPacket.cmd.size] = 0;
+				m_CurrentPacket.source = this;
+
+				map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(m_CurrentPacket.cmd.hash.hex()); 
+				if(h != m_PacketHandlers.end()){
+					LOG("VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex());
+					(*h).second->handlePacket(m_CurrentPacket);
 				}
+				else {
+					LOG("VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
+					_handle_packet(m_CurrentPacket);
+				}
+				this->_recv_packs.push_back(m_CurrentPacket);
+					
+				m_bPacketReadInProgress = false;
 			}
 		}
 	}
@@ -359,6 +398,10 @@ VSLNode::VSLNode(Network *net):Node(net){
 	ssl->_input = this;
 	this->_output = ssl;
 	
+	this->m_pPacketBuf = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->m_pPacketBuf, -1);
+	
+	m_bPacketReadInProgress = false;
 	this->type = NODE_PEER;
 }
 

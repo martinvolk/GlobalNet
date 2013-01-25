@@ -299,6 +299,50 @@ string hexencode(const char *data, size_t size);
 
 class Network;
 
+
+struct PacketHeader{
+	PacketHeader():m_iMagic(0xf0fa){}
+	PacketHeader(uint16_t code, uint16_t size, SHA1Hash hash):
+		code(code), size(size), hash(hash){}
+	bool is_valid(){return m_iMagic == 0xf0fa;}
+	uint16_t code;
+	uint16_t size;
+	SHA1Hash hash; 
+	uint16_t m_iMagic;
+	char reserved[14];
+}; 
+
+class Packet{
+public:
+	PacketHeader cmd;
+	char data[MAX_PACKET_SIZE];
+	
+	// private data
+	Node *source;
+	
+	Packet(){
+		cmd.code = -1;
+		cmd.size = 0;
+	}
+	
+	Packet(const Packet &other){
+		memcpy(&cmd, &other.cmd, sizeof(cmd));
+		memcpy(data, other.data, sizeof(data));
+		source = other.source;
+	}
+	void operator=(Packet &other){
+		memcpy(&cmd, &other.cmd, sizeof(cmd));
+		memcpy(data, other.data, sizeof(data));
+		source = other.source;
+	}
+	const char *c_ptr() const{
+		return (char*)&cmd;
+	}
+	size_t size() const {
+		return cmd.size+sizeof(PacketHeader);
+	}
+};
+
 // a connection node
 class Node{
 public:
@@ -395,6 +439,11 @@ public:
 private:
 	SSLNode *ssl;
 	UDTNode *udt;
+	
+	BIO *m_pPacketBuf;
+	
+	Packet m_CurrentPacket; 
+	bool m_bPacketReadInProgress;
 	
 	map<string, Channel*> m_Channels;
 	map<string, PacketHandler*> m_PacketHandlers; 
@@ -599,47 +648,6 @@ public:
 	virtual void run();
 };
 
-struct PacketHeader{
-	PacketHeader(){}
-	PacketHeader(uint16_t code, uint16_t size, SHA1Hash hash):
-		code(code), size(size), hash(hash){}
-	uint16_t code;
-	uint16_t size;
-	SHA1Hash hash; 
-	char reserved[16];
-}; 
-
-
-class Packet{
-public:
-	PacketHeader cmd;
-	char data[MAX_PACKET_SIZE];
-	
-	// private data
-	Node *source;
-	
-	Packet(){
-		cmd.code = -1;
-		cmd.size = 0;
-	}
-	
-	Packet(const Packet &other){
-		memcpy(&cmd, &other.cmd, sizeof(cmd));
-		memcpy(data, other.data, sizeof(data));
-		source = other.source;
-	}
-	void operator=(Packet &other){
-		memcpy(&cmd, &other.cmd, sizeof(cmd));
-		memcpy(data, other.data, sizeof(data));
-		source = other.source;
-	}
-	const char *c_ptr() const{
-		return (char*)&cmd;
-	}
-	size_t size() const {
-		return cmd.size+sizeof(PacketHeader);
-	}
-};
 
 struct Network;
 /* a link is an implementation of the routing protocol */ 
