@@ -219,8 +219,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		node->do_handshake(SOCK_CLIENT);
 		peers[VSL::to_string(rand())] = node;
 		
-		Channel *chan = new Channel(this, node);
-		//channels[chan] = chan;
+		Channel *chan = node->createChannel();
 		parent_node = node;
 		parent = chan;
 	}
@@ -249,14 +248,11 @@ Node *Network::connect(const URL &url){
 		else {
 			node = (*it).second;
 		}
-		Channel *chan = new Channel(this, node);
-		//channels[chan] = chan;
-		return chan;
+		return node->createChannel();
 	}
 	else if(url.protocol().compare("tcp") == 0){
 		TCPNode *tcp = new TCPNode(this);
 		tcp->connect(url);
-		connections[tcp] = tcp;
 		return tcp;
 	}
 	else {

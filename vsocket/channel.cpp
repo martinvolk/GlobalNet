@@ -1,7 +1,7 @@
 #include "local.h"
 
 Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
-	m_pRelay(0), m_pLink(link){
+	m_pRelay(0), m_extLink(link){
 	
 	if(!hash.length()){
 		stringstream ss;
@@ -10,19 +10,30 @@ Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
 		p.cmd.code = CMD_CHAN_INIT;
 		p.cmd.hash = SHA1Hash::compute(ss.str());
 		m_sHash = p.cmd.hash.hex();
-		LOG(1,"CHANNEL: sending CHAN_INIT "<<m_sHash<<" to "<<m_pLink->url.url());
-		m_pLink->sendCommand(p);
+		LOG(1,"CHANNEL: sending CHAN_INIT "<<m_sHash<<" to "<<m_extLink->url.url());
+		m_extLink->sendCommand(p);
 	} else {
 		m_sHash = hash;
 	}
 	state = CON_STATE_ESTABLISHED; 
 	url = URL("vsl", m_sHash, 0);
-	m_pLink->registerChannel(m_sHash, this);
 }
 
 Channel::~Channel(){
 	this->close();
-	m_pLink->removeChannel(m_sHash);
+}
+
+void Channel::close(){
+	m_extLink->releaseChannel(this);
+	m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
+	// relay is always created here. 
+	LOG(3, "CHANNEL: cleaning up! "<<m_sHash);
+	if(m_pRelay) delete m_pRelay; 
+	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
+			it != m_Peers.end(); it++){
+		delete *it;
+	}
+	state = CON_STATE_DISCONNECTED;
 }
 
 void Channel::handlePacket(const Packet &pack){
@@ -58,12 +69,12 @@ void Channel::handlePacket(const Packet &pack){
 		LOG(2,"CHANNEL: received CHAN_INIT "<<pack.cmd.hash.hex()<<" from "<<url.url());
 	}
 	else if(pack.cmd.code == CMD_DATA){
-		LOG(2,"CHANNEL: DATA from "<<m_pLink->url.url()<<", "
+		LOG(2,"CHANNEL: DATA from "<<m_extLink->url.url()<<", "
 				<<pack.cmd.hash.hex()<<": "<<pack.cmd.size<<" bytes.");
 		BIO_write(read_buf, pack.data, pack.cmd.size);
 	}
 	else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
-		LOG(2,"CHANNEL: ENCRYPT_BEGIN from "<<m_pLink->url.url());
+		LOG(2,"CHANNEL: ENCRYPT_BEGIN from "<<m_extLink->url.url());
 		VSLNode *node = new VSLNode(m_pNetwork);
 		node->url = URL("vsl://"+m_sHash);
 		
@@ -77,10 +88,10 @@ void Channel::handlePacket(const Packet &pack){
 	
 	else if(pack.cmd.code == RELAY_CONNECT){
 		URL url = URL(pack.data);
-		LOG(2,"CHANNEL: got relay connect from "<<m_pLink->url.url()<<": "<<url.url());
+		LOG(2,"CHANNEL: got relay connect from "<<m_extLink->url.url()<<": "<<url.url());
 		// this will either return an existing connection or establish a new one
+		// the returned pointer is a channel and so can be deleted later. 
 		m_pRelay = m_pNetwork->connect(url);
-		//m_pRelay->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
 		if(!m_pRelay)
 			ERROR("CHANNEL: could not connect to "<<url.url());
 	}
@@ -88,26 +99,26 @@ void Channel::handlePacket(const Packet &pack){
 
 int Channel::connect(const URL &url){
 	Packet pack;
-	LOG(2,"CHANNEL: sending relay connect to "<<m_pLink->url.url());
+	LOG(2,"CHANNEL: sending relay connect to "<<m_extLink->url.url());
 	pack.cmd.code = RELAY_CONNECT;
 	pack.cmd.hash.from_hex_string(m_sHash);
 	pack.cmd.size = url.url().length();
 	memcpy(pack.data, url.url().c_str(), url.url().length());
-	return m_pLink->sendCommand(pack);
+	return m_extLink->sendCommand(pack);
 }
 
 int Channel::sendCommand(const Packet &pack){
 	Packet p = pack;
 	p.cmd.hash.from_hex_string(m_sHash);
-	return m_pLink->sendCommand(p);
+	return m_extLink->sendCommand(p);
 }
 int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
 	LOG(1,"CHANNEL: sendCommand: "<<cmd<<", "<<hexencode(data, size)<<": "
 			<<size<<" bytes.");
-	return m_pLink->sendCommand(cmd, data, size, m_sHash);
+	return m_extLink->sendCommand(cmd, data, size, m_sHash);
 }
 int Channel::send(const char *data, size_t maxsize, size_t minsize){
-	return m_pLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
+	return m_extLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
 }
 
 int Channel::recv(char *data, size_t maxsize, size_t minsize){
@@ -151,8 +162,4 @@ void Channel::run(){
 	}
 }
 
-void Channel::close(){
-	m_pLink->removeChannel(m_sHash);
-	m_pLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
-}
 	

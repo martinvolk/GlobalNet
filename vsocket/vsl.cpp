@@ -8,6 +8,33 @@ Free software. Part of the GlobalNet project.
 #include "local.h"
 
 
+VSLNode::VSLNode(Network *net):Node(net){
+	ssl = new SSLNode(net);
+	udt = new UDTNode(net);
+	
+	ssl->_output = udt;
+	udt->_input = ssl;
+	ssl->_input = this;
+	this->_output = ssl;
+	
+	this->m_pPacketBuf = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->m_pPacketBuf, -1);
+	
+	m_bPacketReadInProgress = false;
+	this->type = NODE_PEER;
+}
+
+VSLNode::~VSLNode(){
+	LOG(3,"VSL: deleting "<<url.url());
+	state = 0;
+	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
+			it != m_Channels.end(); it++){
+		// unlink us from the channel and disconnect the channel
+		(*it).second->close();
+	}
+	
+}
+
 int VSLNode::connect(const URL &url){ 
 	if(this->state & CON_STATE_CONNECTED){
 		cout<<"CON_connect: connection is already connected. Please call CON_close() before establishing a new one!"<<endl;
@@ -142,19 +169,17 @@ int VSLNode::recvCommand(Packet *dst){
 	return 0;
 }
 
-void VSLNode::registerChannel(const string &tag, Channel *handler){
-	if(handler)
-		m_Channels[tag] = handler;
-	else
-		ERROR("VSL: registerChannel: argument is zero!");
+Channel* VSLNode::createChannel(){
+	Channel *chan = new Channel(m_pNetwork, this); 
+	m_Channels[chan->id()] = chan;
+	return chan;
 }
 
-void VSLNode::removeChannel(const string &tag){
-	if(!state) return;
-	map<string, Channel*>::iterator it = m_Channels.find(tag);
+void VSLNode::releaseChannel(const Channel *chan){
+	map<string, Channel*>::iterator it = m_Channels.find(chan->id());
 	if(it != m_Channels.end())
 		m_Channels.erase(it);
-	this->sendCommand(CMD_CHAN_CLOSE, "", 0, tag);
+	this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
 }
 
 void VSLNode::do_handshake(SocketType type){
@@ -365,30 +390,4 @@ Node* VSLNode::get_input(){
 	return this->_input;
 }
 */
-
-VSLNode::VSLNode(Network *net):Node(net){
-	ssl = new SSLNode(net);
-	udt = new UDTNode(net);
-	
-	ssl->_output = udt;
-	udt->_input = ssl;
-	ssl->_input = this;
-	this->_output = ssl;
-	
-	this->m_pPacketBuf = BIO_new(BIO_s_mem());
-	BIO_set_mem_eof_return(this->m_pPacketBuf, -1);
-	
-	m_bPacketReadInProgress = false;
-	this->type = NODE_PEER;
-}
-
-VSLNode::~VSLNode(){
-	LOG(3,"VSL: deleting "<<url.url());
-	state = 0;
-	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
-			it != m_Channels.end(); it++){
-		(*it).second->close();
-	}
-	
-}
 

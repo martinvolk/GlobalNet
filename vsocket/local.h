@@ -129,6 +129,7 @@ private:
 	bool *flag;
 };
 
+
 #define LOCK(mu, it) _locker __lk_##it(mu);
 #define UNLOCK(mu, it) __lk_##it.unlock();
 #define SETFLAG(mu, it) _setter __lk_##it(mu);
@@ -462,8 +463,10 @@ public:
 	/*
 	virtual void set_input(Node *other);
 	virtual Node* get_input();*/
-	void registerChannel(const string &tag, Channel *handler);
-	void removeChannel(const string &tag);
+	Channel *createChannel();
+	void releaseChannel(const Channel *chan);
+	int numActiveChannels(){return m_Channels.size();}
+	
 	void do_handshake(SocketType type); 
 private:
 	SSLNode *ssl;
@@ -733,9 +736,13 @@ node->do_handshake(SOCK_CLIENT);
 </pre>
 **/
 class Channel : public Node, public PacketHandler{
-public:
+	friend class VSLNode;
+protected:
 	Channel(Network *net, VSLNode *link, const string &tag = "");
+public:
 	virtual ~Channel();
+	
+	const string &id() const {return m_sHash;}
 	
 	// this will connect further at the remote end of connection node
 	virtual int connect(const URL &url);
@@ -755,8 +762,9 @@ public:
 private: 
 	list<VSLNode*> m_Peers;
 	Node *m_pRelay;
-	VSLNode *m_pLink;
 	string m_sHash;
+	
+	VSLNode *m_extLink;
 };
 
 /**
@@ -894,8 +902,6 @@ public:
 	
 	PeerDatabase peer_db;
 	
-	NodeList connections;
-	ChannelList channels;
 	PeerList peers;
 private:
 	time_t last_peer_list_broadcast;
