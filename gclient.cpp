@@ -59,8 +59,6 @@ void signal_handler(int sig){
 	}
 	LOG(1,"SHUTTING DOWN!");
 	shutting_down = true;
-	VSL::shutdown();
-	exit(1);
 }
 
 
@@ -117,7 +115,7 @@ int main(int argc, char* argv[])
 	//VSL::set_option("server_crt", "server.crt");
 	//VSL::set_option("server_key", "server.key");
 	//VSL::set_option("anonymity_level", "1");
-
+/*
 VSL::SOCKINFO info;
 VSL::VSOCKET socket = VSL::socket(); 
 list<URL> path; 
@@ -154,7 +152,7 @@ cout<<"Response: "<<response<<endl;
 cout<<"Response: "<<response<<endl;
 VSL::shutdown();
 return 0;
-
+*/
 	// find all peers
 	if(options[CONNECT].count() > 0){
 		vector<string> peers;
@@ -175,7 +173,7 @@ return 0;
 	Service *console = new ConsoleService(); 
 	
 	if(socks->listen(URL("socks", "127.0.0.1", port)) == -1){
-		exit(0);
+		return 0;
 	}
 	
 	// start the console service
@@ -186,7 +184,7 @@ return 0;
 	}
 	
 	unsigned long usec = 0;
-	while(true){
+	while(!shutting_down){
 		if(LOGLEVEL > 1){
 			if((usec % 100) == 0)
 				cout<<"M";
@@ -199,10 +197,11 @@ return 0;
 		usleep(1000); // microseconds
 	}
 	
+	shutting_down = true;
+	
 	delete socks;
 	delete console;
 	
-	shutting_down = true;
 	VSL::shutdown();
 	
 	return 1;

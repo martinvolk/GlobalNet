@@ -607,6 +607,7 @@ public:
 	virtual ~SocksNode();
 	
 	struct socks_t{
+		socks_t():version(0),code(0),reserved(0),atype(0){}
 		unsigned char version;
 		unsigned char code;
 		unsigned char reserved;

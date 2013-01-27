@@ -43,7 +43,7 @@ SocksService::SocksService(){
 	local_socket = VSL::socket();
 }
 SocksService::~SocksService(){
-	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	list< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
 	while(it != this->local_clients.end()){
 		VSL::close((*it).second);
 		VSL::close((*it).first);
@@ -92,6 +92,8 @@ void SocksService::run(){
 	VSL::VSOCKET client; 
 	 
 	if((client = VSL::accept(this->local_socket))>0){
+		LOG(2, "SOCKS: accepted new connection!");
+		
 		VSL::VSOCKET link = VSL::socket(); //get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
 		string host, port;
 		VSL::getsockopt(client, "socks_request_host", host);
@@ -114,20 +116,26 @@ void SocksService::run(){
 			VSL::close(link);
 	}
 	/// process data from local clients
-	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+	
 	char buf[SOCKET_BUF_SIZE];
-	while(it != this->local_clients.end()){
+	for(list< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
+			it != this->local_clients.end(); ){
 		VSL::VSOCKET sock = (*it).first;
 		VSL::VSOCKET link = (*it).second;
 		VSL::SOCKINFO info_sock, info_link;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
 		VSL::getsockinfo(sock, &info_sock);
-		VSL::getsockinfo(sock, &info_link);
-		if(info_sock.state == VSL::VSOCKET_DISCONNECTED || 
-				info_link.state == VSL::VSOCKET_DISCONNECTED){ // client disconnected
-			LOG(1,"SOCKS: session has ended!");
-			//put_socket_to_cache(get_socket_ip(sock), link);
+		VSL::getsockinfo(link, &info_link);
+		if(info_sock.state == VSL::VSOCKET_DISCONNECTED){
+			LOG(1,"SOCKS: client disconnected!");
+			VSL::close(sock);
+			VSL::close(link);
+			this->local_clients.erase(it++);
+			continue;
+		}
+		if(info_link.state == VSL::VSOCKET_DISCONNECTED){ 
+			LOG(1,"SOCKS: remote session ended!");
 			VSL::close(link);
 			VSL::close(sock);
 			this->local_clients.erase(it++);

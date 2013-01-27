@@ -64,7 +64,7 @@ PeerDatabase::~PeerDatabase(){
 	LOG(1,"PDB: stopping threads...");
 	running = false;
 	void *ret;
-	pthread_join(this->worker, &ret);
+	pthread_join(worker, &ret);
 }
 
 void PeerDatabase::insert(const Record &_data){

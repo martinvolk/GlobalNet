@@ -78,7 +78,7 @@ public:
 	// on client side 
 	VSL::VSOCKET server_link;  // link through which we can reach the other end
 	VSL::VSOCKET local_socket; // socket of the local connections
-	vector< pair<VSL::VSOCKET, VSL::VSOCKET> > local_clients;
+	list< pair<VSL::VSOCKET, VSL::VSOCKET> > local_clients;
 	map<string, void*> _cache;
 	
 	// listening socket
