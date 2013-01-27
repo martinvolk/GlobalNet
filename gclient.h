@@ -42,7 +42,7 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-#define LOGLEVEL 0
+#define LOGLEVEL 3
 #define LOG(lev,msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
 
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }

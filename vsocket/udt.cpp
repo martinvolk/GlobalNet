@@ -229,13 +229,15 @@ void UDTNode::close(){
 		}
 	}
 	
-	UDT::close(this->socket);
+	if(this->socket)
+		UDT::close(this->socket);
 	
 	//LOG(1,"UDT: disconnected!");
 }
 
 UDTNode::UDTNode(Network *net):Node(net){
 	this->type = NODE_UDT;
+	this->socket = 0;
 }
 
 UDTNode::~UDTNode(){

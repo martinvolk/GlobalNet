@@ -12,6 +12,7 @@ Node::Node(Network *net){
 	this->_output = 0;
 	this->_input = 0;
 	this->type = NODE_NONE;
+	this->m_iRefCount = 1;
 	
 	/* set up the memory-buffer BIOs */
 	this->read_buf = BIO_new(BIO_s_mem());

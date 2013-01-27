@@ -230,7 +230,7 @@ TCPNode::TCPNode(Network *net):Node(net){
 }
 
 TCPNode::~TCPNode(){
-	//LOG(1,"TCP: deleting "<<url.url());
+	LOG(3,"TCP: deleting "<<url.url());
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

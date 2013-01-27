@@ -83,6 +83,8 @@ Network::Network(){
 	UDT::startup();
 	
 	this->server = new VSLNode(this);
+	this->m_pPeerDb = new PeerDatabase();
+	this->last_peer_list_broadcast = 0;
 	
 	vector< pair<string, string> > ifs = inet_get_interfaces();
 	string listen_adr = "127.0.0.1";
@@ -107,7 +109,26 @@ Network::Network(){
 	}
 	
 	// blacklist our own address from local peer database to avoid localhost connections
-	//peer_db.blacklist(listen_adr);
+	//m_pPeerDb->blacklist(listen_adr);
+}
+
+
+Network::~Network(){
+	LOG(1,"NET: shutting down..");
+	
+	// close connections
+	for(PeerList::iterator it = peers.begin(); it != peers.end();){
+		delete (*it).second;
+		peers.erase(it++);
+	}
+	delete m_pPeerDb;
+	delete server;
+	
+	this->server = 0;
+	m_pPeerDb = 0;
+	
+	// use this function to release the UDT library
+	UDT::cleanup();
 }
 
 Peer *Network::getRandomPeer(){
@@ -157,37 +178,8 @@ connection to google and connect to yahoo instead.
 **/
 
 Node *Network::createTunnel(const list<URL> &links){
-	/*vector<PeerDatabase::Record> random = this->peer_db.random(length);
-	if(random.size() && random.size() < length){
-		ERROR("NET: NOT ENOUGH PEERS TO ESTABLISH CONNECTION OF LENGTH "<< 
-		length);
-		// pad for testing..
-		while(random.size()<length) random.push_back(random[0]);
-	}
-	if(!random.size()) return 0;
-	
-	LOG(1,"NET: setting up tunnel to "<<url.url());
-	*/
 	list<URL>::const_iterator li = links.begin();
 	if(!links.size()) return 0;
-	
-	// see if we already have the vsl channel established through these 
-	// peers. 
-	/*string full_path;
-	list<URL>::const_iterator i = links.begin();
-	while(i != links.end()){
-		if((*i).protocol().compare("vsl") != 0) break;
-		if(full_path.length() != 0) full_path += ">";
-		full_path += (*i).url();
-		i++;
-	}
-	map<string, VSLNode*>::iterator it = peers.find(full_path);
-	if(it != peers.end()){
-		LOG(1,"NET: using existing link: "<<full_path);
-		Channel *chan = new Channel(this, (*it).second);
-		chan->connect(*i); // connect to the next node
-		return chan;
-	}*/
 	
 	LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 	// we connect directly to the first peer. 
@@ -241,7 +233,7 @@ Node *Network::connect(const URL &url){
 			
 			PeerDatabase::Record r;
 			r.peer = url;
-			peer_db.insert(r);
+			m_pPeerDb->insert(r);
 		}
 		else {
 			node = (*it).second;
@@ -260,11 +252,13 @@ Node *Network::connect(const URL &url){
 }
 
 void Network::run() {
-	//this->peer_db.purge();
+	//this->m_pPeerDb->purge();
 	
-	PeerDatabase::Record r;
-	r.peer = this->server->url;
-	peer_db.insert(r);
+	if(this->server){
+		PeerDatabase::Record r;
+		r.peer = this->server->url;
+		m_pPeerDb->insert(r);
+	}
 	
 	// accept incoming client connections on the standard port 
 	VSLNode *client = 0;
@@ -272,9 +266,12 @@ void Network::run() {
 		PeerDatabase::Record r;
 		r.peer = client->url;
 		r.hub = server->url;
-		peer_db.insert(r);
+		m_pPeerDb->insert(r);
 		
 		//peer->setListener(new _PeerListener(this));
+		if(peers.find(client->url.url()) != peers.end()){
+			ERROR("NET: run: trying to add a peer that already exists!!");
+		}
 		peers[client->url.url()] = client;
 	}
 	
@@ -288,10 +285,10 @@ void Network::run() {
 		Peer *peer = (*it).second;
 		Packet pack;
 		if(peer->state & CON_STATE_DISCONNECTED){
-			//peers.erase(it++);
-			//delete peer;
+			peers.erase(it++);
+			delete peer;
 			//it++;
-			//continue;
+			continue;
 		}
 		peer->run();
 		
@@ -312,10 +309,10 @@ void Network::run() {
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 
 			r.peer = p->url;
-			this->peer_db.update(r);
+			this->m_pPeerDb->update(r);
 			
 			// send a peer list to the peer 
-			string peers = peer_db.to_string(25);
+			string peers = m_pPeerDb->to_string(25);
 			p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length(), "");
 		}
 		this->last_peer_list_broadcast = time(0);
@@ -351,15 +348,3 @@ void Network::free(Node *node){
 	//delete node;
 }
 
-Network::~Network(){
-	LOG(1,"NET: shutting down..");
-	
-	// close connections
-	for(PeerList::iterator it = peers.begin(); it != peers.end();){
-		delete (*it).second;
-		peers.erase(it++);
-	}
-	
-	// use this function to release the UDT library
-	UDT::cleanup();
-}

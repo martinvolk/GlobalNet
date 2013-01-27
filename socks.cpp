@@ -99,7 +99,7 @@ void SocksService::run(){
 		list<URL> path; 
 		path.push_front(URL("tcp", host, atoi(port.c_str())));
 		
-		for(int c=0; c<3; c++){
+		for(int c=0; c<1; c++){
 			vector<VSL::PEERINFO> peers;
 			if(VSL::get_peers_allowing_connection_to(*path.begin(), peers, 50) == 0){
 				ERROR("SOCKS: no peers available that can route to "<<(*path.begin()).url());
@@ -108,13 +108,7 @@ void SocksService::run(){
 			}
 			path.push_front(peers[rand()%peers.size()].url);
 		}
-		if(path.size() > 0 && path.size() != 4){
-			LOG(1,"SOCKS: extending path with extra links..");
-			while(path.size() != 4){
-				path.push_front(*path.begin());
-			}
-		}
-		else if(VSL::connect(link, path) != -1)
+		if(VSL::connect(link, URL("tcp", host, atoi(port.c_str()))) != -1)
 			this->local_clients.push_back(pair<VSL::VSOCKET, VSL::VSOCKET>(client, link));
 		else
 			VSL::close(link);
@@ -125,22 +119,24 @@ void SocksService::run(){
 	while(it != this->local_clients.end()){
 		VSL::VSOCKET sock = (*it).first;
 		VSL::VSOCKET link = (*it).second;
-		VSL::SOCKINFO info;
+		VSL::SOCKINFO info_sock, info_link;
 		int rs;
 		//if(select_socket(sock, 10) <= 0) continue;
-		VSL::getsockinfo(link, &info);
-		
-		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
-			LOG(1,"SOCKS: sending "<<rs<<" bytes to link.");
-			VSL::send(link, buf, rs);
-		} 
-		if(rs == 0 || info.state == VSL::VSOCKET_IDLE){ // client disconnected
+		VSL::getsockinfo(sock, &info_sock);
+		VSL::getsockinfo(sock, &info_link);
+		if(info_sock.state == VSL::VSOCKET_DISCONNECTED || 
+				info_link.state == VSL::VSOCKET_DISCONNECTED){ // client disconnected
 			LOG(1,"SOCKS: session has ended!");
 			//put_socket_to_cache(get_socket_ip(sock), link);
 			VSL::close(link);
 			VSL::close(sock);
-			it = this->local_clients.erase(it);
+			this->local_clients.erase(it++);
 			continue;
+		} 
+		
+		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
+			LOG(1,"SOCKS: sending "<<rs<<" bytes to link.");
+			VSL::send(link, buf, rs);
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
 			LOG(1,"SOCKS: sending "<<rs<<" bytes to socks connection!");
@@ -148,13 +144,7 @@ void SocksService::run(){
 				
 			}
 		} 
-		if(rs < 0 || info.state == VSL::VSOCKET_DISCONNECTED){
-			LOG(1,"SOCKS: peer end disconnected.");
-			VSL::close(link);
-			it = local_clients.erase(it);
-			VSL::close(sock);
-			continue;
-		}
+		
 		it++;
 	}
 }

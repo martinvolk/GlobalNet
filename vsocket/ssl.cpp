@@ -334,6 +334,7 @@ SSLNode::SSLNode(Network *net, SocketType type):Node(net){
 	this->ssl = 0;
 	this->ctx = 0;
 	this->type = NODE_SSL;
+	server_socket = false;
 	
 	if(type == SOCK_SERVER){
 		_init_ssl_socket(true);

@@ -68,7 +68,7 @@ namespace VSL{
 	}
 	
 	static void *_vsl_worker(void *data){
-		unsigned long usec;
+		unsigned long usec = 0;
 		while(true){
 			if((usec % 100) == 0 && LOGLEVEL > 1){
 				cout<<"V";
@@ -80,17 +80,12 @@ namespace VSL{
 			if(!running) break;
 			
 			for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
-				it != sockets.end(); it++)
+				it != sockets.end(); it++){
 				if((*it).second)
 					(*it).second->run();
-			
-			UNLOCK(mu, 0);
-			
-			usleep(1000);
-			
-			LOCK(mu, 1);
+			}
 			net->run();
-			UNLOCK(mu, 1);
+			UNLOCK(mu, 0);
 			usleep(1000);
 		}
 		return 0;
@@ -106,6 +101,12 @@ namespace VSL{
 	
 	void shutdown(){
 		LOCK(mu, 0);
+		for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
+				it != sockets.end(); it++){
+			(*it).second->close();
+			delete (*it).second;
+		}
+		sockets.clear();
 		delete net;
 		running = false;
 		UNLOCK(mu, 0);
@@ -118,7 +119,7 @@ namespace VSL{
 					vector<PEERINFO> &peers, unsigned int maxcount){
 		LOCK(mu,0);
 		peers.reserve(peers.size()+maxcount);
-		vector<PeerDatabase::Record> random = net->peer_db.random(maxcount);
+		vector<PeerDatabase::Record> random = net->m_pPeerDb->random(maxcount);
 		for(vector<PeerDatabase::Record>::iterator it = random.begin();
 			it != random.end(); it++){
 				PEERINFO pi;
@@ -153,7 +154,7 @@ namespace VSL{
 		}
 		con = net->connect(url);
 		sockets[socket] = con;
-		return 1;
+		return 0;
 	}
 	
 	VSL::VSOCKET accept(VSL::VSOCKET socket){

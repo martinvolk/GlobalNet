@@ -21,22 +21,26 @@ VSLNode::VSLNode(Network *net):Node(net){
 	BIO_set_mem_eof_return(this->m_pPacketBuf, -1);
 	
 	m_bPacketReadInProgress = false;
+	m_bReleasingChannel = false;
 	this->type = NODE_PEER;
 }
 
 VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
+	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
-			it != m_Channels.end(); ){
-		Channel *chan = (*it).second;
-		m_Channels.erase(it++);
-		
-		chan->close();
-		// we don't delete the channels because they may be referenced 
-		// outside of VSLNode
+			it != m_Channels.end(); it++){
+		chans.push_back((*it).second);
 	}
-	
+	for(list<Channel*>::iterator it = chans.begin(); 
+			it != chans.end(); it++){
+		releaseChannel(*it);
+	}
+	m_Channels.clear();
+	delete ssl;
+	if(udt) delete udt;
+	BIO_free(m_pPacketBuf);
 }
 
 int VSLNode::connect(const URL &url){ 
@@ -137,7 +141,6 @@ int VSLNode::recv(char *data, size_t size, size_t minsize){
 	// is put in the read buffer to be read using this function by the _input node. 
 	// this buffer will only contain the contents of received DATA packets. 
 	if(this->state & CON_STATE_INVALID) return -1;
-	if(BIO_eof(this->in_read)) return 0;
 	if(BIO_ctrl_pending(this->in_read) < minsize) return 0;
 	return BIO_read(this->in_read, data, size);
 }
@@ -176,15 +179,27 @@ int VSLNode::recvCommand(Packet *dst){
 Channel* VSLNode::createChannel(){
 	Channel *chan = new Channel(m_pNetwork, this); 
 	m_Channels[chan->id()] = chan;
+	chan->m_iRefCount++;
 	return chan;
 }
 
 void VSLNode::releaseChannel(const Channel *chan){
+	if(m_bReleasingChannel) return;
+	m_bReleasingChannel = true;
+	
 	map<string, Channel*>::iterator it = m_Channels.find(chan->id());
 	if(it != m_Channels.end()){
-		m_Channels.erase(it);
+		// remove it if it is internally created
 		this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
+		
+		if((*it).second->m_iRefCount == 1 && !(*it).second->m_bDeleteInProgress){
+			(*it).second->m_extLink = 0;
+			(*it).second->close();
+			delete (*it).second;
+		}
+		m_Channels.erase(it);
 	}
+	m_bReleasingChannel = false;
 }
 
 void VSLNode::do_handshake(SocketType type){
@@ -199,7 +214,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
 		LOG(2,"[con_handle_packet] received DATA of "<<packet.cmd.size);
-		BIO_write(this->in_read, packet.data, packet.cmd.size);
+		//BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	else if(packet.cmd.code == CMD_CHAN_INIT){
 		LOG(2,"VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
@@ -214,7 +229,15 @@ void VSLNode::_handle_packet(const Packet &packet){
 			ERROR("VSL: CHAN_INIT: attempting to initialize an already registered channel!");
 		}
 	}
-	
+	else if(packet.cmd.code == CMD_CHAN_CLOSE){
+		LOG(3, "VSL: got CMD_CHAN_CLOSE "<<packet.cmd.hash.hex()<<" from "<<url.url());
+		map<string, Channel*>::iterator it = m_Channels.find(packet.cmd.hash.hex());
+		if(it != m_Channels.end()){
+			(*it).second->m_extLink = 0;
+			(*it).second->close();
+			releaseChannel((*it).second);
+		}
+	}
 }
 
 void VSLNode::run(){
@@ -243,7 +266,7 @@ void VSLNode::run(){
 	for(vector<Channel*>::iterator it = chans.begin(); 
 			it != chans.end(); it++){
 		if((*it)->state & CON_STATE_DISCONNECTED){
-			m_Channels.erase(m_Channels.find((*it)->id()));
+			releaseChannel(*it);
 		}
 		(*it)->run();
 	}
@@ -273,13 +296,15 @@ void VSLNode::run(){
 		/// now we process our write_buf and fill with data from _ouput
 		
 		// send unsent data 
-		while(this->_output && !BIO_eof(this->write_buf)){
+		while(BIO_ctrl_pending(this->write_buf)){
 			char tmp[SOCKET_BUF_SIZE];
 			int rc; 
 			
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				LOG(3,"VSL: sending "<<rc<<" bytes to output..");
-				this->_output->send(tmp, rc);
+				if(this->_output){
+					LOG(3,"VSL: sending "<<rc<<" bytes to output..");
+					this->_output->send(tmp, rc);
+				}
 			}
 		}
 		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
@@ -307,14 +332,12 @@ void VSLNode::run(){
 				m_CurrentPacket.source = this;
 
 				if(!m_CurrentPacket.cmd.hash.is_zero()){
+					_handle_packet(m_CurrentPacket);
+					
 					map<string, Channel*>::iterator h = m_Channels.find(m_CurrentPacket.cmd.hash.hex()); 
 					if(h != m_Channels.end()){
 						LOG(2,"VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex()<<": "<<m_CurrentPacket.cmd.size<<" bytes.");
 						(*h).second->handlePacket(m_CurrentPacket);
-					}
-					else{
-						LOG(2,"VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
-						_handle_packet(m_CurrentPacket);
 					}
 				}
 				
@@ -324,6 +347,13 @@ void VSLNode::run(){
 				m_bPacketReadInProgress = false;
 			}
 		}
+	}
+	else {
+		// empty the buffers
+		//while(BIO_ctrl_pending(in_write)) BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE);
+		//while(BIO_ctrl_pending(in_read)) BIO_read(this->in_read, tmp, SOCKET_BUF_SIZE);
+		//while(BIO_ctrl_pending(write_buf)) BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
+		//while(BIO_ctrl_pending(read_buf)) BIO_read(this->read_buf, tmp, SOCKET_BUF_SIZE);
 	}
 	// we always should check whether the output has closed so that we can graciously 
 	// switch state to closed of our connection as well. The other connections 
@@ -340,7 +370,7 @@ void VSLNode::close(){
 		this->state = CON_STATE_DISCONNECTED;
 		return;
 	}
-	while(!BIO_eof(this->write_buf)){
+	while(BIO_ctrl_pending(this->write_buf)){
 		char tmp[SOCKET_BUF_SIZE];
 		int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
 		this->_output->send(tmp, rc);
@@ -351,10 +381,12 @@ void VSLNode::close(){
 }
 
 void VSLNode::set_output(Node *other){
-	//delete this->_output->_output;
+	if(this->_output->_output == udt){
+		delete this->_output->_output;
+		udt = 0;
+	}
 	this->_output->_output = other;
 	if(other){
-		// ugly 
 		this->url = URL("vsl", other->url.host(), other->url.port());
 		this->_output->url = URL("ssl", other->url.host(), other->url.port());
 		other->set_input(this);

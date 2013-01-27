@@ -58,10 +58,11 @@ Free software. Part of the GlobalNet project.
 using namespace std;
 
 // loglevel 1-3 (3 = detailed)
-#define LOGLEVEL 1
+#define LOGLEVEL 3
 
 #define LOG(lev, msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
-				(unsigned int)pthread_self()<<"]\t"<<msg << endl; }
+				(unsigned int)pthread_self()<<"]\t"<<msg << endl; \
+				fflush(stdout); }
 
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"]\t\t"<< "[ERROR] =========> "<<msg << endl; }
@@ -418,6 +419,7 @@ public:
 	void set_option(const string &opt, const string &val);
 	bool get_option(const string &opt, string &res);
 	
+	int m_iRefCount; 
 protected: 
 	Network *m_pNetwork;
 	bool m_bProcessingMainLoop;
@@ -470,13 +472,17 @@ public:
 	
 	void do_handshake(SocketType type); 
 private:
+	void finish();
+	
 	SSLNode *ssl;
 	UDTNode *udt;
 	
 	BIO *m_pPacketBuf;
 	
 	Packet m_CurrentPacket; 
+	
 	bool m_bPacketReadInProgress;
+	bool m_bReleasingChannel;
 	
 	map<string, Channel*> m_Channels;
 	
@@ -761,6 +767,8 @@ public:
 	
 	virtual void handlePacket(const Packet &pack);
 private: 
+	bool m_bDeleteInProgress;
+	
 	list<VSLNode*> m_Peers;
 	Node *m_pRelay;
 	string m_sHash;
@@ -897,12 +905,7 @@ public:
 	
 	VSLNode *server; 
 	
-	// list of currently active outgoing links
-	vector<Link*> links;
-	
-	//Peer *createPeer();
-	
-	PeerDatabase peer_db;
+	PeerDatabase *m_pPeerDb;
 	
 	PeerList peers;
 private:

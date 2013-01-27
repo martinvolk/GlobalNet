@@ -16,6 +16,7 @@ Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
 		m_sHash = hash;
 	}
 	m_pTarget = 0;
+	m_bDeleteInProgress = false;
 	state = CON_STATE_ESTABLISHED; 
 	url = URL("vsl", m_sHash, 0);
 }
@@ -25,14 +26,14 @@ Unregisters the channel from the underlying VSLNode and sends
 disconnect to the remote end of the channel. 
 **/
 Channel::~Channel(){
+	m_bDeleteInProgress = true;
 	this->close();
 	LOG(3, "CHANNEL: deleted "<<m_sHash);
 }
 
 void Channel::close(){
 	LOG(3, "CHANNEL: cleaning up! "<<m_sHash); 	
-	m_extLink->releaseChannel(this);
-	m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
+	
 	// relay is always created here. 
 	if(m_pRelay) delete m_pRelay; 
 	if(m_pTarget) delete m_pTarget;
@@ -47,6 +48,11 @@ void Channel::close(){
 	m_pRelay = 0;
 	m_pTarget = 0;
 	state = CON_STATE_DISCONNECTED;
+	
+	if(m_extLink){
+		m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
+		m_extLink->releaseChannel(this);
+	}
 }
 
 void Channel::handlePacket(const Packet &pack){
@@ -120,6 +126,7 @@ int Channel::connect(const URL &url){
 	// create a parallel channel and close ourselves. 
 	if(!m_pTarget){
 		m_pTarget = m_extLink->createChannel();
+		m_iRefCount++;
 		m_extLink->releaseChannel(this);
 	}
 	
@@ -209,13 +216,11 @@ void Channel::run(){
 			this->send(tmp, rc);
 		}
 	}
-	if(m_pRelay && m_pRelay->state & CON_STATE_DISCONNECTED){
+	
+	if((m_extLink && m_extLink->state & CON_STATE_DISCONNECTED) || 
+		(m_pRelay && m_pRelay->state & CON_STATE_DISCONNECTED) ||
+		(m_pTarget && m_pTarget->state & CON_STATE_DISCONNECTED)){
 		LOG(3,"CHANNEL: closing channel "<<m_sHash<<": relay disconnected!");
-		close();
-		return;
-	}
-	if(m_pTarget && m_pTarget->state & CON_STATE_DISCONNECTED){
-		LOG(3,"CHANNEL: closing channel "<<m_sHash<<": target disconnected!");
 		close();
 		return;
 	}
