@@ -98,7 +98,7 @@ Network::Network(){
 		stringstream ss; 
 		ss<<"vsl://"<<listen_adr<<":"<<port;
 		if(this->server->listen(URL(ss.str()))){
-			LOG("NET: peer listening on "<<this->server->url.url());
+			LOG(1,"NET: peer listening on "<<this->server->url.url());
 			break;
 		}
 		if(port == SERV_LISTEN_PORT + 1000){
@@ -112,7 +112,7 @@ Network::Network(){
 
 Peer *Network::getRandomPeer(){
 	int r = rand() % peers.size();
-	LOG("=================> USING PEER "<<r);
+	LOG(1,"=================> USING PEER "<<r);
 	if(!peers.size()) return 0;
 	int c=0;
 	for(PeerList::iterator it = peers.begin();
@@ -166,7 +166,7 @@ Node *Network::createTunnel(const list<URL> &links){
 	}
 	if(!random.size()) return 0;
 	
-	LOG("NET: setting up tunnel to "<<url.url());
+	LOG(1,"NET: setting up tunnel to "<<url.url());
 	*/
 	list<URL>::const_iterator li = links.begin();
 	if(!links.size()) return 0;
@@ -183,13 +183,13 @@ Node *Network::createTunnel(const list<URL> &links){
 	}
 	map<string, VSLNode*>::iterator it = peers.find(full_path);
 	if(it != peers.end()){
-		LOG("NET: using existing link: "<<full_path);
+		LOG(1,"NET: using existing link: "<<full_path);
 		Channel *chan = new Channel(this, (*it).second);
 		chan->connect(*i); // connect to the next node
 		return chan;
 	}*/
 	
-	LOG("NET: connecting to intermediate hop: "<<(*li).url());
+	LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 	// we connect directly to the first peer. 
 	Node *parent = connect(*li);
 	VSLNode *parent_node = 0;
@@ -200,7 +200,7 @@ Node *Network::createTunnel(const list<URL> &links){
 	for(unsigned int c = 0; c<links.size()-1; c++){
 		// does a relay connect to the next peer. 
 		
-		LOG("NET: connecting to intermediate hop: "<<(*li).url());
+		LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 		
 		parent->connect(*li);
 		
@@ -211,6 +211,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		
 		// put the remote channel into encryption mode and create a new 
 		// encryption node that will encrypt all the traffic. 
+		LOG(1,"NET: sending ENCRYPT_BEGIN to "<<parent->url.url());
 		parent->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
 		
 		VSLNode *node = new VSLNode(this);
@@ -219,6 +220,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		peers[VSL::to_string(rand())] = node;
 		
 		Channel *chan = new Channel(this, node);
+		channels[chan] = chan;
 		parent_node = node;
 		parent = chan;
 	}
@@ -235,7 +237,7 @@ Node *Network::connect(const URL &url){
 		// if don't have a connection then we connect
 		VSLNode *node = 0;
 		if(it == peers.end()){
-			LOG("NET: connecting to peer "<<url.url());
+			LOG(1,"NET: connecting to peer "<<url.url());
 			node = new VSLNode(this);
 			node->connect(url);
 			peers[url.url()] = node;
@@ -281,6 +283,11 @@ void Network::run() {
 		//peer->setListener(new _PeerListener(this));
 		peers[client->url.url()] = client;
 	}
+	for(map<Channel*, Channel*>::iterator it = channels.begin();
+		it != channels.end(); it++){
+		(*it).second->run();
+	}
+	
 	for(PeerList::iterator it = peers.begin(); 
 			it != peers.end(); ){
 		Peer *peer = (*it).second;
@@ -297,15 +304,15 @@ void Network::run() {
 	}
 	
 	if(this->last_peer_list_broadcast < time(0) - NET_PEER_LIST_INTERVAL){
-		LOG(endl<<"CONNECTIONS:");
+		LOG(1,endl<<"CONNECTIONS:");
 		
-		LOG("PEERS:");
+		LOG(1,"PEERS:");
 		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
 			Peer *p = (*it).second;
-			LOG((*it).first<<", state: "<<con_state_to_string(p->state));
+			LOG(1,(*it).first<<", state: "<<con_state_to_string(p->state));
 		}
 		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
-			//LOG("NET: sending peer list to the peer.");
+			//LOG(1,"NET: sending peer list to the peer.");
 			Peer *p = (*it).second;
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 
@@ -350,7 +357,7 @@ void Network::free(Node *node){
 }
 
 Network::~Network(){
-	LOG("NET: shutting down..");
+	LOG(1,"NET: shutting down..");
 	
 	// close connections
 	for(PeerList::iterator it = peers.begin(); it != peers.end();){

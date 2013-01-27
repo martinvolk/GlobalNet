@@ -54,10 +54,10 @@ Service *console;
 static bool shutting_down = false;
 void signal_handler(int sig){
 	if(shutting_down) {
-		LOG("SHUTDOWN ALREADY IN PROGRESS!");
+		LOG(1,"SHUTDOWN ALREADY IN PROGRESS!");
 		return;
 	}
-	LOG("SHUTTING DOWN!");
+	LOG(1,"SHUTTING DOWN!");
 	shutting_down = true;
 	VSL::shutdown();
 	exit(1);
@@ -117,41 +117,6 @@ int main(int argc, char* argv[])
 	//VSL::set_option("server_crt", "server.crt");
 	//VSL::set_option("server_key", "server.key");
 	//VSL::set_option("anonymity_level", "1");
-
-VSL::SOCKINFO info;
-VSL::VSOCKET socket = VSL::socket(); 
-list<URL> path; 
-path.push_back(URL("vsl://localhost:9000"));
-path.push_back(URL("vsl://localhost:9000"));
-path.push_back(URL("tcp://google.com:80"));
-
-VSL::connect(socket, path);
-
-string request = "GET /\n";
-string response = "";
-VSL::send(socket, request.c_str(), request.length());
-
-time_t t = time(0);
-while(true){
-  char tmp[4096];
-  int rc; 
-  memset(tmp, 0, sizeof(tmp));
-  
-  VSL::getsockinfo(socket, &info);
-  if(info.state == VSL::VSOCKET_DISCONNECTED)
-    break;
-  
-  if((rc = VSL::recv(socket, tmp, sizeof(tmp)-1))>0){
-    response += tmp;
-  }
-  
-  if(time(0) - t > 10){
-    ERROR("Response timed out!");
-    exit(0);
-  }
-}
-cout<<"Response: "<<response<<endl;
-exit(0);
 
 	// find all peers
 	if(options[CONNECT].count() > 0){

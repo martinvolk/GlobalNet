@@ -28,12 +28,12 @@ static bool _try_connect(const URL &url){
 	
 	UDTSOCKET client = UDT::socket(local->ai_family, local->ai_socktype, local->ai_protocol);
 	if (0 != getaddrinfo(url.host().c_str(), VSL::to_string(url.port()).c_str(), &hints, &peer)){
-		LOG("PDB: peer vetting failed: error getting peer address!"<<url.url());
+		LOG(1,"PDB: peer vetting failed: error getting peer address!"<<url.url());
 		goto fail;
 	}
 	if (UDT::ERROR == UDT::connect(client, peer->ai_addr, peer->ai_addrlen))
 	{
-		//LOG("PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
+		//LOG(1,"PDB: peer vetting failed on " << host <<":"<<port<<": "<< UDT::getlasterror().getErrorMessage());
 		goto fail;
 	}
 	if(local)freeaddrinfo(local);
@@ -61,7 +61,7 @@ PeerDatabase::PeerDatabase(){
 }
 
 PeerDatabase::~PeerDatabase(){
-	LOG("PDB: stopping threads...");
+	LOG(1,"PDB: stopping threads...");
 	running = false;
 	void *ret;
 	pthread_join(this->worker, &ret);
@@ -77,7 +77,7 @@ void PeerDatabase::insert(const Record &_data){
 
 	Record data = _data;
 	if(data.peer.host().compare("") == 0){
-		LOG("PDB: skipping peer: ip is null");
+		LOG(1,"PDB: skipping peer: ip is null");
 		return;
 	}
 	if(data.peer.protocol().compare("vsl") != 0){
@@ -86,17 +86,17 @@ void PeerDatabase::insert(const Record &_data){
 	}
 	if(data.peer.host().compare(data.hub.host()) == 0 && 
 			data.peer.port() == data.hub.port()){
-		LOG("PDB: skipping peer: ip same as hub!");
+		LOG(1,"PDB: skipping peer: ip same as hub!");
 		return;
 	}
 //#ifndef DEBUG
 	/*if(data.peer.is_local()){
-		//LOG("PDB: skipping peer because it's a local address!");
+		//LOG(1,"PDB: skipping peer because it's a local address!");
 		return;
 	}*/
 //#endif
 	data.last_update = time(0);
-	//LOG("PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
+	//LOG(1,"PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
 	this->quarantine[data.hash().hex()] = data;
 }
 
@@ -111,7 +111,7 @@ void PeerDatabase::update(const Record &_data){
 		insert(data); 
 		return;
 	}
-	//LOG("PDB: update: "<<data.peer.ip<<":"<<data.peer.port);
+	//LOG(1,"PDB: update: "<<data.peer.ip<<":"<<data.peer.port);
 	data.last_update = time(0);
 	(*it).second = data;
 }
@@ -125,13 +125,13 @@ vector<PeerDatabase::Record> PeerDatabase::random(unsigned int count, bool inclu
 			it != this->db.end(); it++){
 		if((*it).second.peer.port() != SERV_LISTEN_PORT)
 			continue;
-		//LOG((*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
+		//LOG(1,(*it).second.hash().hex()<<": "<<(*it).second.peer.ip<<":"<<(*it).second.peer.port);
 		rand_set.push_back((*it).second);
 	}
 	if(rand_set.size()==0) return rand_set;
 	std::random_shuffle(rand_set.begin(), rand_set.end());
 	if(rand_set.size()>count) rand_set.resize(count);
-	//LOG("PDB: size: "<<rand_set.size());
+	//LOG(1,"PDB: size: "<<rand_set.size());
 	return rand_set;
 }
 
@@ -186,7 +186,7 @@ void PeerDatabase::loop(){
 			
 			if(time(0) - timer1 > 5){
 				LOCK(mu,0);
-				LOG("PDB: doing quarantine");
+				LOG(1,"PDB: doing quarantine");
 				for(map<string, Record>::iterator it = this->quarantine.begin(); 
 						it != this->quarantine.end(); it++) tmp.push_back((*it).second); 
 				quarantine.clear();
@@ -211,7 +211,7 @@ void PeerDatabase::loop(){
 			if(time(0) - timer2 > 5){
 				tmp.clear();
 				LOCK(mu,2);
-				LOG("PDB: doing routine checks..");
+				LOG(1,"PDB: doing routine checks..");
 				for(map<string, Record>::iterator it = this->db.begin(); 
 						it != this->db.end(); it++) tmp.push_back((*it).second); 
 				UNLOCK(mu,2);
@@ -223,7 +223,7 @@ void PeerDatabase::loop(){
 					// remove if unreachable and save in offline peers so that we can later reconnect
 					if(!reachable){
 						LOCK(mu,1);
-						LOG("PDB: removing unreachable host: "<<(*it).peer.url());
+						LOG(1,"PDB: removing unreachable host: "<<(*it).peer.url());
 						db.erase(db.find((*it).hash().hex()));
 						offline[(*it).hash().hex()] = (*it);
 						UNLOCK(mu,1);
@@ -249,7 +249,7 @@ void PeerDatabase::loop(){
 				// remove if unreachable and save in offline peers so that we can later reconnect
 				if(reachable){
 					LOCK(mu,1);
-					LOG("PDB: host back online, readding: "<<(*it).peer.ip<<":"<<(*it).peer.port);
+					LOG(1,"PDB: host back online, readding: "<<(*it).peer.ip<<":"<<(*it).peer.port);
 					offline.erase(offline.find((*it).hash().hex()));
 					db[(*it).hash().hex()] = (*it);
 					UNLOCK(mu,1);
@@ -259,5 +259,5 @@ void PeerDatabase::loop(){
 		}
 		usleep(1000);
 	}
-	LOG("PDB: main loop exiting..");
+	LOG(1,"PDB: main loop exiting..");
 }

@@ -40,6 +40,7 @@ int Node::sendCommand(const Packet &pack){
 	// the default behavior is to simply pass the command down the line
 	if(this->_output)
 		this->_output->sendCommand(pack);
+	//this->sendCommand((NodeMessage)pack.cmd.code, pack.data, pack.cmd.size, pack.cmd.hash.hex());
 	return 1;
 }
 
@@ -82,16 +83,15 @@ Node::Node(Network *net){
 	BIO_set_mem_eof_return(this->in_read, -1);
 	BIO_set_mem_eof_return(this->in_write, -1);
 	
+	m_bProcessingMainLoop = false;
 	this->state = CON_STATE_INITIALIZED;
 }
 
 void Node::set_output(Node *other){
 	if(this->_output) delete _output;
 	this->_output = other;
-	if(other){
-		this->url = other->url;
+	if(other)
 		other->set_input(this);
-	}
 }
 void Node::set_input(Node *other){ 
 	this->_input = other;
@@ -118,7 +118,7 @@ bool Node::get_option(const string &opt, string &res){
 
 set<long> deleted;
 Node::~Node(){
-	//LOG("NODE: deleting "<<this<<": "<<url.url());
+	//LOG(1,"NODE: deleting "<<this<<": "<<url.url());
 	if(deleted.find((long)this) != deleted.end()){
 		cout<<"DOUBLE FREE!"<<endl;
 	}
@@ -152,4 +152,3 @@ Node::~Node(){
 	this->_input = 0;
 	
 }
-

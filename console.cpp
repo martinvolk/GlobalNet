@@ -26,7 +26,7 @@ ConsoleService::~ConsoleService(){
 }
 
 int ConsoleService::listen(const URL &url){
-	LOG("[console] starting console service on port "<<url.port());
+	LOG(1,"[console] starting console service on port "<<url.port());
 	
 	VSL::VSOCKET con = VSL::socket();
 	VSL::listen(con, url);
@@ -39,7 +39,7 @@ void ConsoleService::run(){
 	VSL::VSOCKET client; 
 	
 	if((client = VSL::accept(this->socket))){
-		LOG("new client connected to the console!");
+		LOG(1,"new client connected to the console!");
 		clients.push_back(client);
 		
 		string prompt = "gnet# ";
@@ -62,13 +62,13 @@ void ConsoleService::run(){
 		}
 		
 		if(cmd.length()){
-			LOG("[console] processing command " << cmd);
+			LOG(1,"[console] processing command " << cmd);
 			
 			if(cmd.compare("stats")){
 				VSL::print_stats(this->clients[c]);
 			}
 			else if(cmd.compare("listpeers")){
-				LOG("test");
+				LOG(1,"test");
 				
 				
 			}

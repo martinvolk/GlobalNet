@@ -57,14 +57,11 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-#define DEBUG
+// loglevel 1-3 (3 = detailed)
+#define LOGLEVEL 1
 
-#ifndef DEBUG
-#define LOG(msg) {}
-#else
-#define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
+#define LOG(lev, msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
 				(unsigned int)pthread_self()<<"]\t"<<msg << endl; }
-#endif
 
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"]\t\t"<< "[ERROR] =========> "<<msg << endl; }
@@ -747,6 +744,7 @@ public:
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
+	virtual int sendCommand(const Packet &pack);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const URL &url);
 	virtual Node* accept();
@@ -755,7 +753,7 @@ public:
 	
 	virtual void handlePacket(const Packet &pack);
 private: 
-	map<string, VSLNode*> m_Peers;
+	list<VSLNode*> m_Peers;
 	Node *m_pRelay;
 	VSLNode *m_pLink;
 	string m_sHash;

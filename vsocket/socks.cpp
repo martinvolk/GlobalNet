@@ -48,7 +48,7 @@ void SocksNode::run(){
 	Node *client = 0; 
 	if((client = listen_socket->accept()) != 0){
 		// push the client into the queue of socks nodes
-		LOG("SocksNode: accepted connection from "<<client->url.url());
+		LOG(1,"SocksNode: accepted connection from "<<client->url.url());
 		socks_state_t state; 
 		state.last_event = time(0);
 		state.state = SOCKS_STATE_INIT;
@@ -63,7 +63,7 @@ void SocksNode::run(){
 		c->run();
 		
 		if(time(0) - state.last_event > SOCKS_TIMEOUT){
-			LOG("SOCKS: connection timed out!");
+			LOG(1,"SOCKS: connection timed out!");
 			c->close();
 			delete c;
 			accept_queue.erase(it++);
@@ -74,7 +74,7 @@ void SocksNode::run(){
 			// skip first packet (2 bytes)
 			if(c->recv((char*)&state.socks, 2, 2) == 2){
 				if(int(state.socks.version) != 5){
-					LOG("SOCKS: client specified unsupported socks version: "<<(int)state.socks.version);
+					LOG(1,"SOCKS: client specified unsupported socks version: "<<(int)state.socks.version);
 					c->close();
 					delete c;
 					accept_queue.erase(it++);
@@ -145,7 +145,7 @@ void SocksNode::run(){
 			string host, port;
 			c->get_option("socks_request_host", host);
 			c->get_option("socks_request_port", port);
-			LOG("SOCKS v"<<int(state.socks.version)<<", CODE: "<<int(state.socks.code)<<", AT:" <<
+			LOG(1,"SOCKS v"<<int(state.socks.version)<<", CODE: "<<int(state.socks.code)<<", AT:" <<
 					int(state.socks.atype)<<", IP: "<<host<<":"<<port);
 			state.state = SOCKS_STATE_9;
 		}

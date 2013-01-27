@@ -58,12 +58,12 @@ void SocksService::put_socket_to_cache(const char *ip, VSL::VSOCKET socket){
 		map<VSL::VSOCKET, CachePost> m; 
 		m[socket] = CachePost(socket, time(0));
 		cache[string(ip)] = m;
-		LOG("SOCKS: cache: putting into cache was successfull!");
+		LOG(1,"SOCKS: cache: putting into cache was successfull!");
 		return;
 	}
 	//map<VSL::VSOCKET, CachePost>::iterator p = (*it).second.find(socket);
 	//if(p != (*it).second.end()) return;
-	LOG("SOCKS: cache: putting into cache was successfull! ("<<(*it).second.size()<<")");
+	LOG(1,"SOCKS: cache: putting into cache was successfull! ("<<(*it).second.size()<<")");
 	(*it).second[socket] = CachePost(socket, time(0));
 }
 
@@ -109,7 +109,7 @@ void SocksService::run(){
 			path.push_front(peers[rand()%peers.size()].url);
 		}
 		if(path.size() > 0 && path.size() != 4){
-			LOG("SOCKS: extending path with extra links..");
+			LOG(1,"SOCKS: extending path with extra links..");
 			while(path.size() != 4){
 				path.push_front(*path.begin());
 			}
@@ -131,11 +131,11 @@ void SocksService::run(){
 		VSL::getsockinfo(link, &info);
 		
 		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
-			LOG("SOCKS: sending "<<rs<<" bytes to link.");
+			LOG(1,"SOCKS: sending "<<rs<<" bytes to link.");
 			VSL::send(link, buf, rs);
 		} 
 		if(rs == 0 || info.state == VSL::VSOCKET_IDLE){ // client disconnected
-			LOG("SOCKS: session has ended!");
+			LOG(1,"SOCKS: session has ended!");
 			//put_socket_to_cache(get_socket_ip(sock), link);
 			VSL::close(link);
 			VSL::close(sock);
@@ -143,13 +143,13 @@ void SocksService::run(){
 			continue;
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
-			LOG("SOCKS: sending "<<rs<<" bytes to socks connection!");
+			LOG(1,"SOCKS: sending "<<rs<<" bytes to socks connection!");
 			if((VSL::send(sock, buf, rs))<0){
 				
 			}
 		} 
 		if(rs < 0 || info.state == VSL::VSOCKET_DISCONNECTED){
-			LOG("SOCKS: peer end disconnected.");
+			LOG(1,"SOCKS: peer end disconnected.");
 			VSL::close(link);
 			it = local_clients.erase(it);
 			VSL::close(sock);
@@ -161,10 +161,10 @@ void SocksService::run(){
 
 int SocksService::listen(const URL &url){
 	if(VSL::listen(this->local_socket, url)>0){
-		LOG("SOCKS: listening on port "<<url.port());
+		LOG(1,"SOCKS: listening on port "<<url.port());
 		return 1;
 	}
-	LOG("SOCKS: failed to listen on "<<url.url());
+	LOG(1,"SOCKS: failed to listen on "<<url.url());
 	return -1;
 	
 }

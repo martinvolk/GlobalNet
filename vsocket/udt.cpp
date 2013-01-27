@@ -20,7 +20,7 @@ Node *UDTNode::accept(){
 	
 	/// accept connections on the server socket 
 	if(UDT::ERROR != (recver = UDT::accept(this->socket, (sockaddr*)&clientaddr, &addrlen))){
-		LOG("[udt] accepted incoming connection!");
+		LOG(1,"[udt] accepted incoming connection!");
 		if(recver == UDT::INVALID_SOCK)
 		{
 			 cout << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
@@ -35,7 +35,7 @@ Node *UDTNode::accept(){
 		conn->url = URL("udt", host, atoi(clientservice));
 		conn->socket = recver;
 		
-		//LOG("[udt] accepted new connection!");
+		//LOG(1,"[udt] accepted new connection!");
 		conn->state = CON_STATE_ESTABLISHED;
 		
 		return conn;
@@ -91,7 +91,7 @@ int UDTNode::connect(const URL &url){
 	port_txt << url.port();
 	if (0 != getaddrinfo(url.host().c_str(), port_txt.str().c_str(), &hints, &peer))
 	{
-		LOG("[connection] incorrect server/peer address. " << url.host() << ":" << url.port());
+		LOG(1,"[connection] incorrect server/peer address. " << url.host() << ":" << url.port());
 		return 0;
 	}
 	// set non blocking
@@ -132,7 +132,7 @@ void UDTNode::run(){
 	
 	UDTSTATUS status = UDT::getsockstate(socket);
 	if(this->state & CON_STATE_CONNECTING && status == CONNECTED){
-		LOG("[udt] connected to "<<url.url());
+		LOG(1,"[udt] connected to "<<url.url());
 		
 		this->state = CON_STATE_ESTABLISHED;
 	}
@@ -150,17 +150,17 @@ void UDTNode::run(){
 		// send/recv data
 		while(!BIO_eof(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				//LOG("UDT: sending "<<rc<<" bytes of data!");
+				//LOG(1,"UDT: sending "<<rc<<" bytes of data!");
 				UDT::send(this->socket, tmp, rc, 0);
 			}
 		}
 		if((rc = UDT::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			//LOG("UDT: received "<<rc<<" bytes of data!");
+			//LOG(1,"UDT: received "<<rc<<" bytes of data!");
 			BIO_write(this->read_buf, tmp, rc);
 		}
 		// if disconnected
 		if(UDT::getsockstate(this->socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
-			LOG("UDT: "<<url.url()<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
+			LOG(1,"UDT: "<<url.url()<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
 			//UDT::close(this->socket);
 			this->state = CON_STATE_DISCONNECTED;
 		}
@@ -207,7 +207,7 @@ int UDTNode::listen(const URL &url){
 	bool opt = false;
 	UDT::setsockopt(socket, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
-	LOG("[udt] peer listening on port " << url.port() << " for incoming connections.");
+	LOG(1,"[udt] peer listening on port " << url.port() << " for incoming connections.");
 	
 	this->url = URL("udt", inet_get_host_ip(url.host()), url.port());
 	
@@ -231,7 +231,7 @@ void UDTNode::close(){
 	
 	UDT::close(this->socket);
 	
-	//LOG("UDT: disconnected!");
+	//LOG(1,"UDT: disconnected!");
 }
 
 UDTNode::UDTNode(Network *net):Node(net){
@@ -239,7 +239,7 @@ UDTNode::UDTNode(Network *net):Node(net){
 }
 
 UDTNode::~UDTNode(){
-	//LOG("UDT: deleting "<<url.url());
+	//LOG(1,"UDT: deleting "<<url.url());
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

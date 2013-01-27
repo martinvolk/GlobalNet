@@ -185,7 +185,7 @@ void SSLNode::run(){
 	int rc = 0;
 	
 	if(!this->_output){
-		LOG("[warning] no backend set for the SSL connection!");
+		LOG(1,"[warning] no backend set for the SSL connection!");
 		return;
 	}
 	
@@ -202,7 +202,7 @@ void SSLNode::run(){
 		
 		this->timer = milliseconds();
 		this->state = CON_STATE_SSL_HANDSHAKE; 
-		LOG("SSL: initializing handshake..");
+		LOG(1,"SSL: initializing handshake..");
 	}
 	if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_DISCONNECTED){
 		this->state = CON_STATE_DISCONNECTED; 
@@ -216,12 +216,12 @@ void SSLNode::run(){
 			this->_output->run();
 			while(!BIO_eof(this->write_buf)){
 				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-					//LOG("SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
+					LOG(3,"SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
 					this->_output->send(tmp, rc);
 				}
 			}
 			if((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
-				//LOG("SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
+				LOG(3,"SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
 				BIO_write(this->read_buf, tmp, rc);
 			}
 		}
@@ -235,28 +235,28 @@ void SSLNode::run(){
 		// may happen that would make us forever stuck in handshake. 
 		// we need to close if we stay here for too long.. 
 		if((milliseconds()-this->timer) > CONNECTION_TIMEOUT){
-			LOG("SSL: connection timed out! "<<url.url());
+			LOG(1,"SSL: connection timed out! "<<url.url());
 			state = CON_STATE_DISCONNECTED;
 			//this->close();
 			return;
 		}
 		if(this->server_socket == false){
-			//LOG("SSL: Attempting to connect to "<<url.url());
+			//LOG(1,"SSL: Attempting to connect to "<<url.url());
 			if((res = SSL_connect(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
-				LOG("ssl connection succeeded! Connected to peer "<<url.url());
+				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
 			}
 		}
 		else {
-			//LOG("SSL: accepting ssl connections on "<<url.url());
+			//LOG(1,"SSL: accepting ssl connections on "<<url.url());
 			if((res=SSL_accept(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
-				LOG("ssl connection succeeded! Connected to peer "<<url.url());
+				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
@@ -269,20 +269,20 @@ void SSLNode::run(){
 	if(this->state & CON_STATE_CONNECTED){
 		if((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
 			if((rc = SSL_write(this->ssl, tmp, rc))<=0){
-				LOG("error sending ssl to "<<url.url()<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
+				LOG(1,"error sending ssl to "<<url.url()<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
 				ERR_SSL(rc);
 			}
 			
 			if(rc>0){
-				//LOG("[SSL] send: "<<url.url()<<" length: "<<rc<<" ");
-				//LOG(hexencode(tmp, rc));
+				//LOG(1,"[SSL] send: "<<url.url()<<" length: "<<rc<<" ");
+				//LOG(1,hexencode(tmp, rc));
 			}
 		}
 		if((rc = SSL_read(this->ssl, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("[SSL] recv: "<<url.url()<<" length: "<<rc<<" ");
+			//LOG(1,"[SSL] recv: "<<url.url()<<" length: "<<rc<<" ");
 			BIO_write(this->in_read, tmp, rc);
 			
-			//LOG(hexencode(tmp, rc));
+			//LOG(1,hexencode(tmp, rc));
 		}
 	}
 	
@@ -290,7 +290,7 @@ void SSLNode::run(){
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
-		//LOG("SSL: underlying connection lost. Disconnected!");
+		//LOG(1,"SSL: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }
@@ -318,7 +318,7 @@ void SSLNode::close(){
 		this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
 	
-	LOG("SSL: disconnected!");
+	LOG(1,"SSL: disconnected!");
 }
 SSLNode::SSLNode(Network *net):Node(net){
 	this->state = CON_STATE_INITIALIZED;
@@ -351,5 +351,5 @@ SSLNode::~SSLNode(){
 	
 	_close_ssl_socket();
 	
-	LOG("SSL: deleted "<<url.url());
+	LOG(1,"SSL: deleted "<<url.url());
 }

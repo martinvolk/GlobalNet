@@ -27,6 +27,7 @@ int VSLNode::connect(const URL &url){
 	BIO_flush(in_write);
 	BIO_reset(in_write);
 	
+	this->url = url;
 	this->_output->connect(url);
 	
 	return 1;
@@ -70,7 +71,7 @@ int VSLNode::listen(const URL &url){
 	// listening means that we are setting up a connection in order to listen for other connections
 	// since peer can not directly listen on anything, we just forward the request. 
 	if(!this->_output || (this->state & CON_STATE_CONNECTED)){
-		LOG("You can not listen on this socket.");
+		LOG(1,"You can not listen on this socket.");
 		return -1;
 	}
 	this->state = CON_STATE_LISTENING;
@@ -127,12 +128,12 @@ int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size, const s
 }
 
 int VSLNode::sendCommand(const Packet &pack){
-	//LOG("VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
+	LOG(3,"VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
 int VSLNode::recvCommand(Packet *dst){
-	//LOG("PEER: RECV COMMAND!");
+	//LOG(1,"PEER: RECV COMMAND!");
 	if(this->_recv_packs.size()){
 		*dst = this->_recv_packs.front();
 		this->_recv_packs.pop_front();
@@ -167,11 +168,11 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// if we received DATA packet then data is stored in the buffer that will
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
-		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
+		LOG(2,"[con_handle_packet] received DATA of "<<packet.cmd.size);
 		BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	else if(packet.cmd.code == CMD_CHAN_INIT){
-		LOG("VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
+		LOG(2,"VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
 		map<string, Channel*>::iterator it = m_Channels.find(packet.cmd.hash.hex());
 		if(it == m_Channels.end()){
 			Channel *chan = new Channel(m_pNetwork, this, packet.cmd.hash.hex());
@@ -183,13 +184,17 @@ void VSLNode::_handle_packet(const Packet &packet){
 		//m_pNetwork->registerChannel(chan);
 	}
 	else if(packet.cmd.code == RELAY_CONNECT){
-		LOG("VSL: received RELAY_CONNECT "<<packet.cmd.hash.hex()<<"from "<<url.url());
-		
+		LOG(1,"VSL: received RELAY_CONNECT "<<packet.cmd.hash.hex()<<"from "<<url.url());
+		ERROR("VSL: doing nothing!");
+	}
+	else if(packet.cmd.code == CMD_ENCRYPT_BEGIN){
+		LOG(1,"VSL: received CMD_ENCRYPT_BEGIN "<<packet.cmd.hash.hex()<<"from "<<url.url());
+		ERROR("VSL: CMD_ENCRYPT_BEGIN doing nothing! ");
 	}
 	// received when the relay has no more data to send or when the remote 
 	// end on the relay has disconnected. Received on the client end. 
 	else if(packet.cmd.code == RELAY_DISCONNECT){
-		LOG("CON: relay: remote end disconnected!");
+		LOG(2,"CON: relay: remote end disconnected!");
 		// we need to clean up the data previously received from the relay. 
 		this->state = state | CON_STATE_IDLE; 
 	}
@@ -239,7 +244,7 @@ void VSLNode::run(){
 		this->url = URL("vsl", this->_output->url.host(), this->_output->url.port());
 		// send information about our status to the other peer. 
 		
-		LOG("VSL: connected to "<<url.url());
+		LOG(1,"VSL: connected to "<<url.url());
 		// toggle our state to connected as well. 
 		this->state = CON_STATE_ESTABLISHED;
 	}
@@ -250,7 +255,7 @@ void VSLNode::run(){
 		// all this data belongs in a DATA packet. This data could not have been
 		// directly writen to write_buf precisely because it needs to be formatted. 
 		while((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
-			LOG("[sending data] "<<rc<<" bytes to "<<url.url());
+			LOG(1,"[sending data] "<<rc<<" bytes to "<<url.url());
 			
 			this->sendCommand(CMD_DATA, tmp, rc, "");
 		}
@@ -260,17 +265,22 @@ void VSLNode::run(){
 		// send unsent data 
 		while(this->_output && !BIO_eof(this->write_buf)){
 			char tmp[SOCKET_BUF_SIZE];
-			int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
-			this->_output->send(tmp, rc);
+			int rc; 
+			
+			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+				LOG(3,"VSL: sending "<<rc<<" bytes to output..");
+				this->_output->send(tmp, rc);
+			}
 		}
 		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
+			LOG(3,"VSL: received "<<rc<<" bytes from output..");
 			BIO_write(m_pPacketBuf, tmp, rc);
 		}
 		
 		// if enough data is in the buffer, we decode the packet 
 		if(!m_bPacketReadInProgress){
 			if(BIO_ctrl_pending(m_pPacketBuf) >= sizeof(m_CurrentPacket.cmd)){
-				//LOG("VSL: reading packet header..");
+				//LOG(1,"VSL: reading packet header..");
 				m_bPacketReadInProgress = true;
 				BIO_read(m_pPacketBuf, &m_CurrentPacket.cmd, sizeof(m_CurrentPacket.cmd));
 				if(!m_CurrentPacket.cmd.is_valid()){
@@ -289,11 +299,11 @@ void VSLNode::run(){
 				if(!m_CurrentPacket.cmd.hash.is_zero()){
 					map<string, Channel*>::iterator h = m_Channels.find(m_CurrentPacket.cmd.hash.hex()); 
 					if(h != m_Channels.end()){
-						//LOG("VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex());
+						LOG(2,"VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex()<<": "<<m_CurrentPacket.cmd.size<<" bytes.");
 						(*h).second->handlePacket(m_CurrentPacket);
 					}
 					else{
-						//LOG("VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
+						LOG(2,"VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
 						_handle_packet(m_CurrentPacket);
 					}
 				}
@@ -309,7 +319,7 @@ void VSLNode::run(){
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
-		//LOG("PEER: underlying connection lost. Disconnected!");
+		//LOG(1,"PEER: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }
@@ -325,7 +335,7 @@ void VSLNode::close(){
 		int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
 		this->_output->send(tmp, rc);
 	}
-	LOG("PEER: disconnected!");
+	LOG(1,"PEER: disconnected!");
 	this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
 }
@@ -373,7 +383,7 @@ VSLNode::VSLNode(Network *net):Node(net){
 }
 
 VSLNode::~VSLNode(){
-	LOG("VSL: deleting "<<url.url());
+	LOG(1,"VSL: deleting "<<url.url());
 	state = 0;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){

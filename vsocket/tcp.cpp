@@ -48,7 +48,7 @@ int TCPNode::connect(const URL &url){
 	
 	this->url = url;
 	
-	LOG("TCP: connecting to "<<url.url());
+	LOG(1,"TCP: connecting to "<<url.url());
 	// we set the state right away to established because the connect
 	// call is blocking
 	//this->state = CON_STATE_ESTABLISHED;
@@ -76,7 +76,7 @@ Node *TCPNode::accept(){
 		getnameinfo((sockaddr *)&adr_clnt, len_inet, host, sizeof(host), clientservice, sizeof(clientservice), NI_NUMERICHOST|NI_NUMERICSERV);
 		con->url = URL(string("tcp://")+host+":"+string(clientservice));
 		
-		LOG("TCP: incoming connection from "<<host<<":"<<clientservice);
+		LOG(1,"TCP: incoming connection from "<<host<<":"<<clientservice);
 		
 		con->socket = z;
 		con->state = CON_STATE_ESTABLISHED;
@@ -129,7 +129,7 @@ int TCPNode::listen(const URL &url){
 		goto close;
 	}
 	
-	LOG("[tcp local] now listening on port "<<url.port());
+	LOG(1,"[tcp local] now listening on port "<<url.port());
 	
 	optval = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
@@ -151,7 +151,7 @@ close:
 int TCPNode::recv(char *data, size_t size, size_t minsize){
 	if(BIO_ctrl_pending(this->read_buf) < minsize) return 0;
 	int rc = BIO_read(this->read_buf, data, size);
-	//if(rc>0)LOG("TCP: recv "<<rc<<" bytes.");
+	//if(rc>0)LOG(1,"TCP: recv "<<rc<<" bytes.");
 	return rc;
 }
 
@@ -172,10 +172,10 @@ void TCPNode::run(){
 			// in progress 
 			return;
 		} else if(rc == 0){
-			LOG("TCP: successfully connected to "<<url.url());
+			LOG(1,"TCP: successfully connected to "<<url.url());
 			state = CON_STATE_ESTABLISHED; 
 		} else {
-			LOG("TCP: connection failed to "<<url.url());
+			LOG(1,"TCP: connection failed to "<<url.url());
 			::close(socket);
 			state = CON_STATE_DISCONNECTED;
 		}
@@ -184,23 +184,23 @@ void TCPNode::run(){
 	if(this->state & CON_STATE_CONNECTING && socket_writable(this->socket)>0){
 		this->state = CON_STATE_ESTABLISHED;
 	
-		LOG("[tcp] connected to "<<url.url());
+		LOG(1,"[tcp] connected to "<<url.url());
 	}*/
 	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
 		while(!BIO_eof(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				//LOG("TCP: sending "<<rc<<" bytes of data to "<<url.url());
+				//LOG(1,"TCP: sending "<<rc<<" bytes of data to "<<url.url());
 				if((rc = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))<0){
 					perror("TCP send");
 				}
 			}
 		}
 		if((rc = ::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			//LOG("TCP: received "<<rc<<" bytes of data!");
+			//LOG(1,"TCP: received "<<rc<<" bytes of data!");
 			BIO_write(this->read_buf, tmp, rc);
 		} else if(rc == 0){
-			LOG("TCP: disconnected from "<<url.url());
+			LOG(1,"TCP: disconnected from "<<url.url());
 			::close(this->socket);
 			this->state = CON_STATE_DISCONNECTED;
 		}
@@ -222,7 +222,7 @@ void TCPNode::close(){
 		}
 	}
 	::close(this->socket);
-	LOG("TCP: disconnected!");
+	LOG(1,"TCP: disconnected!");
 }
 
 TCPNode::TCPNode(Network *net):Node(net){
@@ -230,7 +230,7 @@ TCPNode::TCPNode(Network *net):Node(net){
 }
 
 TCPNode::~TCPNode(){
-	//LOG("TCP: deleting "<<url.url());
+	//LOG(1,"TCP: deleting "<<url.url());
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();
