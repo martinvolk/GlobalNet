@@ -90,10 +90,10 @@ void PeerDatabase::insert(const Record &_data){
 		return;
 	}
 //#ifndef DEBUG
-	/*if(data.peer.is_local()){
+	if(inet_ip_is_local(inet_get_host_ip(data.peer.host()))){
 		//LOG(1,"PDB: skipping peer because it's a local address!");
 		return;
-	}*/
+	}
 //#endif
 	data.last_update = time(0);
 	//LOG(1,"PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);

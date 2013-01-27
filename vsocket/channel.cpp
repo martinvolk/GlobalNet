@@ -34,16 +34,24 @@ Channel::~Channel(){
 void Channel::close(){
 	LOG(3, "CHANNEL: cleaning up! "<<m_sHash); 	
 	
+	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
+			it != m_Peers.end(); it++){
+		// prevent deletion of the target
+		if((*it)->get_output() == m_pTarget)
+			(*it)->set_output(0);
+	}
+	
 	// relay is always created here. 
 	if(m_pRelay) delete m_pRelay; 
 	if(m_pTarget) delete m_pTarget;
 	
-	// TODO: if this is put before deleting target, you get crash.
+	// now delete the nodes
 	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
 			it != m_Peers.end(); it++){
 		delete *it;
 	}
 	m_Peers.clear();
+	
 	
 	m_pRelay = 0;
 	m_pTarget = 0;
@@ -70,7 +78,7 @@ void Channel::handlePacket(const Packet &pack){
 	}
 	
 	// otherwise we handle the packet internally.. :) 
-	if(pack.cmd.code == CMD_CHAN_ACK){
+	if(pack.cmd.code == CMD_CHAN_ACK || pack.cmd.code == RELAY_ACK){
 		state = CON_STATE_ESTABLISHED; 
 	}
 	else if(state & CON_STATE_CONNECTED){
@@ -110,6 +118,9 @@ void Channel::handlePacket(const Packet &pack){
 				return;
 			}
 			this->sendCommand(RELAY_ACK, "", 0, m_sHash);
+		}
+		else if(pack.cmd.code == CMD_CHAN_CLOSE){
+			close();
 		}
 		else {
 			LOG(2, "CHANNEL: discarding unhandled command "<<pack.cmd.code);

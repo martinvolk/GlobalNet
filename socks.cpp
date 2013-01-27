@@ -101,7 +101,7 @@ void SocksService::run(){
 		list<URL> path; 
 		path.push_front(URL("tcp", host, atoi(port.c_str())));
 		
-		for(int c=0; c<1; c++){
+		for(int c=0; c<3; c++){
 			vector<VSL::PEERINFO> peers;
 			if(VSL::get_peers_allowing_connection_to(*path.begin(), peers, 50) == 0){
 				ERROR("SOCKS: no peers available that can route to "<<(*path.begin()).url());
@@ -110,7 +110,7 @@ void SocksService::run(){
 			}
 			path.push_front(peers[rand()%peers.size()].url);
 		}
-		if(VSL::connect(link, URL("tcp", host, atoi(port.c_str()))) != -1)
+		if(VSL::connect(link, path) != -1)
 			this->local_clients.push_back(pair<VSL::VSOCKET, VSL::VSOCKET>(client, link));
 		else
 			VSL::close(link);
