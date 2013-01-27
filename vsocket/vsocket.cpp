@@ -70,7 +70,7 @@ namespace VSL{
 	static void *_vsl_worker(void *data){
 		unsigned long usec;
 		while(true){
-			if((usec % 100) == 0){
+			if((usec % 100) == 0 && LOGLEVEL > 1){
 				cout<<"V";
 				fflush(stdout);
 			}

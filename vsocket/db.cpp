@@ -175,7 +175,7 @@ void PeerDatabase::loop(){
 	unsigned long usec = 0;
 	while(running){
 		{
-			if((usec % 100) == 0){
+			if((usec % 100) == 0 && LOGLEVEL > 1){
 				cout<<"D";
 				fflush(stdout);
 			}

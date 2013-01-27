@@ -341,7 +341,7 @@ void VSLNode::close(){
 }
 
 void VSLNode::set_output(Node *other){
-	delete this->_output->_output;
+	//delete this->_output->_output;
 	this->_output->_output = other;
 	if(other){
 		// ugly 
@@ -383,7 +383,7 @@ VSLNode::VSLNode(Network *net):Node(net){
 }
 
 VSLNode::~VSLNode(){
-	LOG(1,"VSL: deleting "<<url.url());
+	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){

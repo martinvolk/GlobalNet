@@ -150,10 +150,12 @@ int main(int argc, char* argv[])
 	
 	unsigned long usec = 0;
 	while(true){
-		if((usec % 100) == 0)
-			cout<<"M";
-			fflush(stdout);
-		usec++;
+		if(LOGLEVEL > 1){
+			if((usec % 100) == 0)
+				cout<<"M";
+				fflush(stdout);
+			usec++;
+		}
 		// run main loop 
 		socks->run();
 		console->run();

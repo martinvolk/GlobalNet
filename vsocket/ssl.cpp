@@ -351,5 +351,5 @@ SSLNode::~SSLNode(){
 	
 	_close_ssl_socket();
 	
-	LOG(1,"SSL: deleted "<<url.url());
+	LOG(3,"SSL: deleted "<<url.url());
 }

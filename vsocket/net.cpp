@@ -220,7 +220,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		peers[VSL::to_string(rand())] = node;
 		
 		Channel *chan = new Channel(this, node);
-		channels[chan] = chan;
+		//channels[chan] = chan;
 		parent_node = node;
 		parent = chan;
 	}
@@ -250,7 +250,7 @@ Node *Network::connect(const URL &url){
 			node = (*it).second;
 		}
 		Channel *chan = new Channel(this, node);
-		channels[chan] = chan;
+		//channels[chan] = chan;
 		return chan;
 	}
 	else if(url.protocol().compare("tcp") == 0){
@@ -283,10 +283,11 @@ void Network::run() {
 		//peer->setListener(new _PeerListener(this));
 		peers[client->url.url()] = client;
 	}
-	for(map<Channel*, Channel*>::iterator it = channels.begin();
-		it != channels.end(); it++){
-		(*it).second->run();
-	}
+	
+	//for(map<Channel*, Channel*>::iterator it = channels.begin();
+	//	it != channels.end(); it++){
+	//	(*it).second->run();
+	//}
 	
 	for(PeerList::iterator it = peers.begin(); 
 			it != peers.end(); ){
