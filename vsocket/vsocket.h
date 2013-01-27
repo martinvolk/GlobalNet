@@ -11,6 +11,8 @@ Free software. Part of the GlobalNet project.
 #include <stdint.h>
 #include <cstring>
 #include <string>
+#include <vector>
+#include <list>
 
 class URL {
 public:
@@ -54,6 +56,7 @@ namespace VSL {
 	}; 
 	
 	typedef enum{
+		VSOCKET_CONNECTING,
 		VSOCKET_CONNECTED,
 		VSOCKET_IDLE,
 		VSOCKET_DISCONNECTED
@@ -63,7 +66,10 @@ namespace VSL {
 		SocketState state;
 		bool is_connected;
 	};
-	
+	struct PEERINFO{
+		URL url;
+		
+	};
 	string to_string( int value );
 	
 	/** initializes the virtual sockets subsystem. 
@@ -72,45 +78,53 @@ namespace VSL {
 	int init();
 	void shutdown();
 	
-	int add_peer(const URL &url);
-	
-	/** bootstraps the network by connecting to the specified list of peers. 
-	There can be any number of initial peers. Once connected, we can use 
-	these peers as gateways to access the rest of the network. Peers
-	work very much like default gateways in conventional routing. */
-	int bootstrap(const char *peers);
+	/** Returns a list of peers that you can use to relay your 
+	connections. 
+	\return number of peers added to buffer
+	**/
+	int get_peers(vector<PEERINFO> &peers);
+	int get_peers_allowing_connection_to(const URL &url, 
+					vector<PEERINFO> &peers, unsigned int maxcount); 
 	
 	/** Allocates a socket and returns it's descriptor **/
-	VSOCKET socket(SOCKPROTO proto);
-	/** Creates a random tunnel to some peer. You can then use bind() or 
-	listen() or connect() on the returned socket. **/
-	VSOCKET tunnel(const URL &url);
-	/** 
-	Binds an allocated socket to the socket address. The address consists of 
-	a public hash of the peer where to bind the socket and a port number. 
-	- The function puts the socket into BINDING state and exits immedietly. 
-	- Once the socket is bound, it switches state to BOUND. 
-	- If the bind operation fails, then the socket goes into ERROR state. 
-	**/
-	int bind(VSOCKET socket, const URL &url);
-	int bind(VSOCKET socket, const sockaddr_t *address);
+	VSOCKET socket();
 	
-	int listen(VSOCKET socket, const URL &url);
+	/** Establishes a direct connection to the specified host **/
+	int connect(VSOCKET socket, const URL &url);
+	/** Establishes a tunnel to the specified hosts **/
+	int connect(VSOCKET socket, const list<URL> &links);
+	
 	/**
-	Tries to accept a connection on the socket. 
-	Returns: 
-	- > 0 socket descriptor if the operation succeeded. 
-	- 0 if no connection can currently be accepted. 
-	- -1 if there is a socket error. 
+	Puts the socket into listening mode and listens for incoming 
+	connections on the specified port. 
+	**/
+	int listen(VSOCKET socket, const URL &url);
+	int listen(VSOCKET socket, const vector<URL> &links);
+	
+	/**
+	Accepts a new connection if the is one available. 
+	
+	\return >0 socket descriptor if the operation succeeded. 
+	\return 0 if no connection can currently be accepted. 
+	\return -1 if there was an error
 	**/
 	VSOCKET accept(VSOCKET socket); 
 
+	/** 
+	Sends data through the socket channel 
+	
+	\return numread number of bytes stored in the send buffer if successful.
+	\return -1 if there was an error. 
+	**/
 	int send(VSOCKET socket, const char *data, size_t size);
+	/** 
+	Receives data from the socket channel 
+	
+	\return numread number of bytes read if successful.
+	\return 0 if no bytes were read
+	\return -1 if there was an error. 
+	**/
 	int recv(VSOCKET socket, char *data, size_t size);
-	
-	int connect(VSOCKET socket, const URL &url);
-	
-	void run();
 	
 	int getsockinfo(VSOCKET sock, SOCKINFO *info);
 	bool getsockopt(VSOCKET sock, const string &option, string &dst);

@@ -1,3 +1,10 @@
+/*********************************************
+VSL - Virtual Socket Layer
+Martin K. Schröder (c) 2012-2013
+
+Free software. Part of the GlobalNet project. 
+**********************************************/
+
 #include "local.h"
 
 /*
@@ -69,8 +76,12 @@ void PeerDatabase::insert(const Record &_data){
 //#endif
 
 	Record data = _data;
-	if(data.peer.host().compare("") == 0 || data.peer.protocol().compare("vsl") != 0){
-		//LOG("PDB: skipping peer: ip is null");
+	if(data.peer.host().compare("") == 0){
+		LOG("PDB: skipping peer: ip is null");
+		return;
+	}
+	if(data.peer.protocol().compare("vsl") != 0){
+		ERROR("PDB: trying to add a non VSL url! "<<data.peer.url());
 		return;
 	}
 	if(data.peer.host().compare(data.hub.host()) == 0 && 
@@ -161,14 +172,21 @@ void PeerDatabase::from_string(const string &peers){
 
 void PeerDatabase::loop(){
 	time_t timer1 = 0, timer2 = 0;
-	
+	unsigned long usec = 0;
 	while(running){
 		{
+			if((usec % 100) == 0){
+				cout<<"D";
+				fflush(stdout);
+			}
+			usec++;
+			
 			// test peers that are in quarantine and add them to the database if everything checks out. 
 			vector<Record> tmp;
 			
 			if(time(0) - timer1 > 5){
 				LOCK(mu,0);
+				LOG("PDB: doing quarantine");
 				for(map<string, Record>::iterator it = this->quarantine.begin(); 
 						it != this->quarantine.end(); it++) tmp.push_back((*it).second); 
 				quarantine.clear();
@@ -183,6 +201,7 @@ void PeerDatabase::loop(){
 						db[(*it).hash().hex()] = (*it);
 						UNLOCK(mu,1);
 					}
+					usleep(1000);
 					if(!running) break;
 				}
 				timer1 = time(0);
@@ -192,6 +211,7 @@ void PeerDatabase::loop(){
 			if(time(0) - timer2 > 5){
 				tmp.clear();
 				LOCK(mu,2);
+				LOG("PDB: doing routine checks..");
 				for(map<string, Record>::iterator it = this->db.begin(); 
 						it != this->db.end(); it++) tmp.push_back((*it).second); 
 				UNLOCK(mu,2);
@@ -208,6 +228,7 @@ void PeerDatabase::loop(){
 						offline[(*it).hash().hex()] = (*it);
 						UNLOCK(mu,1);
 					}
+					usleep(1000);
 					if(!running) break;
 				}
 				timer2 = time(0);

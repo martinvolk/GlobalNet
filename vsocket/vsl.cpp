@@ -56,7 +56,7 @@ Node *VSLNode::accept(){
 		else
 			con->state = CON_STATE_ESTABLISHED;
 		
-		con->url = peer->url;
+		con->url = URL("vsl", peer->url.host(), peer->url.port());
 		
 		// set the output to newly accepted peer
 		con->_output = peer;
@@ -75,7 +75,7 @@ int VSLNode::listen(const URL &url){
 	}
 	this->state = CON_STATE_LISTENING;
 	if(this->_output->listen(url)>0){
-		this->url = this->_output->url;
+		this->url = URL("vsl", this->_output->url.host(), this->_output->url.port());
 		return 1;
 	}
 	return -1;
@@ -127,7 +127,7 @@ int VSLNode::sendCommand(NodeMessage cmd, const char *data, size_t size, const s
 }
 
 int VSLNode::sendCommand(const Packet &pack){
-	LOG("VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
+	//LOG("VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
 
@@ -141,14 +141,19 @@ int VSLNode::recvCommand(Packet *dst){
 	return 0;
 }
 
-void VSLNode::setPacketHandler(const string &tag, PacketHandler *handler){
-	m_PacketHandlers[tag] = handler;
+void VSLNode::registerChannel(const string &tag, Channel *handler){
+	if(handler)
+		m_Channels[tag] = handler;
+	else
+		ERROR("VSL: registerChannel: argument is zero!");
 }
 
-void VSLNode::removePacketHandler(const string &tag){
-	map<string, PacketHandler*>::iterator it = m_PacketHandlers.find(tag);
-	if(it != m_PacketHandlers.end())
-		m_PacketHandlers.erase(it);
+void VSLNode::removeChannel(const string &tag){
+	if(!state) return;
+	map<string, Channel*>::iterator it = m_Channels.find(tag);
+	if(it != m_Channels.end())
+		m_Channels.erase(it);
+	this->sendCommand(CMD_CHAN_CLOSE, "", 0, tag);
 }
 
 void VSLNode::do_handshake(SocketType type){
@@ -162,7 +167,7 @@ void VSLNode::_handle_packet(const Packet &packet){
 	// if we received DATA packet then data is stored in the buffer that will
 	// be read by the _input node using our recv() function. 
 	if(packet.cmd.code == CMD_DATA){
-		//LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
+		LOG("[con_handle_packet] received DATA of "<<packet.cmd.size);
 		BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	else if(packet.cmd.code == CMD_CHAN_INIT){
@@ -208,19 +213,30 @@ void VSLNode::run(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
-	// ugly
-	if(_input && _input->type == NODE_BRIDGE) _input->run();
-	Node::run();
+	if(m_bProcessingMainLoop) return;
+	
+	SETFLAG(m_bProcessingMainLoop, 0);
+	
+	if(_output)
+		_output->run();
 	
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
-			it != m_Channels.end(); it++){
-		(*it).second->run();
+			it != m_Channels.end();){
+		Channel *chan = (*it).second;
+		chan->run();
+		if(chan->state & CON_STATE_DISCONNECTED){
+			//chan->close();
+			m_Channels.erase(it++);
+			//delete chan;
+			continue;
+		}
+		it++;
 	}
 	
 	// if we are waiting for connection and connection of the underlying node has been established
 	if((this->state & CON_STATE_CONNECTING) && this->_output && (this->_output->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
-		this->url = this->_output->url;
+		this->url = URL("vsl", this->_output->url.host(), this->_output->url.port());
 		// send information about our status to the other peer. 
 		
 		LOG("VSL: connected to "<<url.url());
@@ -251,67 +267,10 @@ void VSLNode::run(){
 			BIO_write(m_pPacketBuf, tmp, rc);
 		}
 		
-		/*
-		if(this->_output && (rc = this->_output->recv(tmp, sizeof(tmp)))>0){
-		int start = this->_recv_buf.size();
-		this->_recv_buf.resize(this->_recv_buf.size()+rc);
-		memcpy(&this->_recv_buf[start], tmp, rc);
-
-		// try to read as many complete packets as possible from the recv buf
-		while(this->_recv_buf.size()){
-			// now we need to check if the packet is complete
-			PacketHeader *cmd = (PacketHeader*)&this->_recv_buf[0];
-			Packet packet;
-			if(cmd->size > ARRSIZE(packet.data)){
-							ERROR("Packet exceeds maximum allowed size! ");
-							close();
-							return;
-			}
-
-			if(cmd->size <= this->_recv_buf.size()-sizeof(PacketHeader)){
-							// check checksum here
-							unsigned size = min(ARRSIZE(packet.data), (unsigned long)cmd->size);
-
-							memcpy(packet.data, &this->_recv_buf[0]+sizeof(PacketHeader), size);
-							memcpy(&packet.cmd, cmd, sizeof(PacketHeader));
-							packet.data[size] = 0;
-							packet.source = this;
-
-							//LOG("CON_process: received complete packet at "<<url.url()<<" cmd: "<<
-							//      packet.cmd.code<<" datalength: "<<rc);
-							//packet.cmd.size<<" recvsize: "<<this->_recv_buf.size());
-
-							// if we have an output socket then we write the received data directly to that socket
-							//LOG(this->bridge);
-							map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(packet.cmd.hash.hex());
-							if(h != m_PacketHandlers.end()){
-											LOG("VSL: passing packet to listener "<<packet.cmd.hash.hex());
-											(*h).second->handlePacket(packet);
-							}
-							else {
-											LOG("VSL: handling packet "<<packet.cmd.hash.hex());
-											_handle_packet(packet);
-							}
-							this->_recv_packs.push_back(packet);
-
-							// update the recv_buf to only have the trailing data that has not 
-							// yet been decoded. 
-							this->_recv_buf = vector<char>(
-											this->_recv_buf.begin()+cmd->size+sizeof(PacketHeader),
-											this->_recv_buf.end());
-			} else {
-							LOG("CON_process: received partial data of "<<rc<< " bytes "<<(this->_recv_buf.size()-sizeof(PacketHeader)));
-							break;
-			}
-				}
-		}
-		}
-*/
-		
 		// if enough data is in the buffer, we decode the packet 
 		if(!m_bPacketReadInProgress){
 			if(BIO_ctrl_pending(m_pPacketBuf) >= sizeof(m_CurrentPacket.cmd)){
-				LOG("VSL: reading packet header..");
+				//LOG("VSL: reading packet header..");
 				m_bPacketReadInProgress = true;
 				BIO_read(m_pPacketBuf, &m_CurrentPacket.cmd, sizeof(m_CurrentPacket.cmd));
 				if(!m_CurrentPacket.cmd.is_valid()){
@@ -327,15 +286,19 @@ void VSLNode::run(){
 				m_CurrentPacket.data[m_CurrentPacket.cmd.size] = 0;
 				m_CurrentPacket.source = this;
 
-				map<string, PacketHandler*>::iterator h = m_PacketHandlers.find(m_CurrentPacket.cmd.hash.hex()); 
-				if(h != m_PacketHandlers.end()){
-					LOG("VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex());
-					(*h).second->handlePacket(m_CurrentPacket);
+				if(!m_CurrentPacket.cmd.hash.is_zero()){
+					map<string, Channel*>::iterator h = m_Channels.find(m_CurrentPacket.cmd.hash.hex()); 
+					if(h != m_Channels.end()){
+						//LOG("VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex());
+						(*h).second->handlePacket(m_CurrentPacket);
+					}
+					else{
+						//LOG("VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
+						_handle_packet(m_CurrentPacket);
+					}
 				}
-				else {
-					LOG("VSL: handling packet "<<m_CurrentPacket.cmd.hash.hex());
-					_handle_packet(m_CurrentPacket);
-				}
+				
+				
 				this->_recv_packs.push_back(m_CurrentPacket);
 					
 				m_bPacketReadInProgress = false;
@@ -370,8 +333,12 @@ void VSLNode::close(){
 void VSLNode::set_output(Node *other){
 	delete this->_output->_output;
 	this->_output->_output = other;
-	if(other)
+	if(other){
+		// ugly 
+		this->url = URL("vsl", other->url.host(), other->url.port());
+		this->_output->url = URL("ssl", other->url.host(), other->url.port());
 		other->set_input(this);
+	}
 }
 Node* VSLNode::get_output(){
 	if(this->_output->_output)
@@ -406,8 +373,12 @@ VSLNode::VSLNode(Network *net):Node(net){
 }
 
 VSLNode::~VSLNode(){
-	//LOG("VSL: deleting "<<url.url());
-	
+	LOG("VSL: deleting "<<url.url());
+	state = 0;
+	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
+			it != m_Channels.end(); it++){
+		(*it).second->close();
+	}
 	
 }
 

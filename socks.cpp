@@ -40,7 +40,7 @@ static const char *get_socket_ip(int socket){
 }
 
 SocksService::SocksService(){
-	local_socket = VSL::socket(VSL::SOCKET_SOCKS);
+	local_socket = VSL::socket();
 }
 SocksService::~SocksService(){
 	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();
@@ -90,23 +90,34 @@ VSL::VSOCKET SocksService::get_socket_from_cache(const char *ip){
 
 void SocksService::run(){
 	VSL::VSOCKET client; 
+	 
 	if((client = VSL::accept(this->local_socket))>0){
-		VSL::VSOCKET link = 0; //get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
+		VSL::VSOCKET link = VSL::socket(); //get_socket_from_cache(inet_ntoa(adr_clnt.sin_addr)); 
 		string host, port;
 		VSL::getsockopt(client, "socks_request_host", host);
 		VSL::getsockopt(client, "socks_request_port", port);
-		if(!link)
-			link = VSL::tunnel(URL("tcp", host, atoi(port.c_str()))); 
-		else {
-			LOG("SOCKS: using previously opened socket from cache!");
-			VSL::connect(link, URL("tcp", host, atoi(port.c_str())));
+		list<URL> path; 
+		path.push_front(URL("tcp", host, atoi(port.c_str())));
+		
+		for(int c=0; c<3; c++){
+			vector<VSL::PEERINFO> peers;
+			if(VSL::get_peers_allowing_connection_to(*path.begin(), peers, 50) == 0){
+				ERROR("SOCKS: no peers available that can route to "<<(*path.begin()).url());
+				VSL::close(link);
+				return;
+			}
+			path.push_front(peers[rand()%peers.size()].url);
 		}
-		if(link > 0){
+		if(path.size() > 0 && path.size() != 4){
+			LOG("SOCKS: extending path with extra links..");
+			while(path.size() != 4){
+				path.push_front(*path.begin());
+			}
+		}
+		else if(VSL::connect(link, path) != -1)
 			this->local_clients.push_back(pair<VSL::VSOCKET, VSL::VSOCKET>(client, link));
-		}
-		else {
-			VSL::close(client);
-		}
+		else
+			VSL::close(link);
 	}
 	/// process data from local clients
 	vector< pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = this->local_clients.begin();

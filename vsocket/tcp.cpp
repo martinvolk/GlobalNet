@@ -197,10 +197,10 @@ void TCPNode::run(){
 			}
 		}
 		if((rc = ::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			LOG("TCP: received "<<rc<<" bytes of data!");
+			//LOG("TCP: received "<<rc<<" bytes of data!");
 			BIO_write(this->read_buf, tmp, rc);
 		} else if(rc == 0){
-			LOG("TCP: disconnected");
+			LOG("TCP: disconnected from "<<url.url());
 			::close(this->socket);
 			this->state = CON_STATE_DISCONNECTED;
 		}

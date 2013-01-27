@@ -88,8 +88,10 @@ Node::Node(Network *net){
 void Node::set_output(Node *other){
 	if(this->_output) delete _output;
 	this->_output = other;
-	if(other)
+	if(other){
+		this->url = other->url;
 		other->set_input(this);
+	}
 }
 void Node::set_input(Node *other){ 
 	this->_input = other;
@@ -149,39 +151,5 @@ Node::~Node(){
 	this->_output = 0;
 	this->_input = 0;
 	
-}
-
-NodeAdapter::NodeAdapter(Network *net, Node *other):Node(net), other(other){
-	this->memnode = new MemoryNode(net);
-	other->set_output(memnode);
-}
-
-NodeAdapter::~NodeAdapter(){
-	
-}
-
-int NodeAdapter::connect(const URL &url){
-	this->state = CON_STATE_CONNECTED;
-	this->url = url;
-	return 1;
-}
-
-int NodeAdapter::listen(const URL &url){
-	this->state = CON_STATE_LISTENING;
-	this->url = url;
-	return 1;
-}
-	
-int NodeAdapter::send(const char *data, size_t maxsize, size_t minsize){
-	// write directly to the managed node output in_write buffer
-	LOG("ADAPTER: send "<<maxsize);
-	return memnode->sendOutput(data, maxsize, minsize); 
-}
-
-int NodeAdapter::recv(char *data, size_t maxsize, size_t minsize){
-	// read directly from the managed node output in_read buffer
-	int rc = memnode->recvOutput(data, maxsize, minsize);
-	if(rc>0) LOG("ADAPTER: received "<<rc<<" bytes from "<<memnode->url.url());
-	return rc;
 }
 

@@ -62,11 +62,12 @@ using namespace std;
 #ifndef DEBUG
 #define LOG(msg) {}
 #else
-#define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#define LOG(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
+				(unsigned int)pthread_self()<<"]\t"<<msg << endl; }
 #endif
 
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
-#define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] =========> "<<msg << endl; }
+#define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"]\t\t"<< "[ERROR] =========> "<<msg << endl; }
 
 #define SOCK_ERROR(what) { \
 		if ( errno != 0 ) {  \
@@ -117,8 +118,24 @@ private:
 	pthread_mutex_t *lk;
 };
 
+class _setter{
+	public:
+	_setter(bool &f){
+		flag = &f;
+		*flag = true;
+	}
+	~_setter(){
+		*flag = false;
+	}
+	void reset(){ *flag = false; }
+private: 
+	bool *flag;
+};
+
 #define LOCK(mu, it) _locker __lk_##it(mu);
 #define UNLOCK(mu, it) __lk_##it.unlock();
+#define SETFLAG(mu, it) _setter __lk_##it(mu);
+#define RESETFLAG(mu, it) __lk_##it.reset();
 
 class SHA1Hash {
 private: 
@@ -129,6 +146,12 @@ public:
 	}
 	SHA1Hash(const SHA1Hash &other){
 		memcpy(hash, other.hash, sizeof(hash));
+	}
+	
+	bool is_zero(){
+		for(unsigned int c=0;c<sizeof(hash); c++)
+			if(hash[c] != (char)0) return false;
+		return true;
 	}
 	
 	bool operator < (const SHA1Hash &other) const{ 
@@ -207,6 +230,7 @@ typedef enum {
 	CMD_ENCRYPT_BEGIN,
 	CMD_OUTBOUND_CONNECT,
 	CMD_CHAN_INIT,
+	CMD_CHAN_CLOSE, 
 	
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
@@ -343,7 +367,9 @@ public:
 	}
 };
 
-// a connection node
+/**
+Node base class. 
+**/
 class Node{
 public:
 	Node(Network *net);
@@ -371,9 +397,6 @@ public:
 	Node *_output; 
 	Node *_input;
 	
-	// this is where the received data will be stored until it can be 
-	// validated and converted into a packet that goes into packet_in
-	vector<char> _recv_buf; 
 	deque<Packet> _recv_packs;
 	
 	// virtual functions
@@ -396,7 +419,10 @@ public:
 	void set_option(const string &opt, const string &val);
 	bool get_option(const string &opt, string &res);
 	
+protected: 
 	Network *m_pNetwork;
+	bool m_bProcessingMainLoop;
+	
 private: 
 	map<string, string> options;
 	
@@ -404,6 +430,7 @@ private:
 	Node &operator=(const Node &other){ return *this; }
 }; 
 
+/** Packet handler object interface **/
 class PacketHandler{
 	public: 
 	virtual void handlePacket(const Packet &pack) = 0;
@@ -412,6 +439,11 @@ class PacketHandler{
 class SSLNode;
 class UDTNode;
 
+/** 
+Sets up an encrypted connection with SSL and UDT as underlying 
+technologies. To replace the UDT layer with something else call 
+VSLNode::set_output(); 
+**/ 
 class VSLNode : public Node{
 public:
 	VSLNode(Network *net);
@@ -433,8 +465,8 @@ public:
 	/*
 	virtual void set_input(Node *other);
 	virtual Node* get_input();*/
-	void setPacketHandler(const string &tag, PacketHandler *handler);
-	void removePacketHandler(const string &tag);
+	void registerChannel(const string &tag, Channel *handler);
+	void removeChannel(const string &tag);
 	void do_handshake(SocketType type); 
 private:
 	SSLNode *ssl;
@@ -446,11 +478,19 @@ private:
 	bool m_bPacketReadInProgress;
 	
 	map<string, Channel*> m_Channels;
-	map<string, PacketHandler*> m_PacketHandlers; 
 	
 	void _handle_packet(const Packet &packet);
 };
 
+/** 
+An SSL encryption node. 
+
+Anything that goes in with send() is encrypted and then forwarded to 
+the _output node send(). 
+
+Call SSLNode::run() to process accumulated data and send it out to the 
+output. 
+**/ 
 class SSLNode : public Node{
 public:
 	SSLNode(Network *net);
@@ -478,6 +518,11 @@ private:
 	SSL *ssl; 
 };
 
+/** 
+A TCP connection node. 
+
+Establishes and maintains an outgoing TCP connection. 
+**/
 class TCPNode : public Node{
 public:
 	TCPNode(Network *net);
@@ -497,6 +542,11 @@ private:
 	struct sockaddr_in _socket_addr;
 };
 
+/** 
+A UDT socket node. 
+
+Establishes and maintains a UDT connection. 
+**/
 class UDTNode : public Node{
 public:
 	UDTNode(Network *net);
@@ -514,7 +564,7 @@ public:
 private:
 	UDTSOCKET socket;
 };
-
+/*
 class BridgeNode : public Node{
 public:
 	BridgeNode(Network *net);
@@ -530,7 +580,20 @@ public:
 	//virtual void peg(Node *other);
 	virtual void close();
 };
+*/
+/** 
+Implements a SOCKS5 socket.
 
+Use this node to listen on a TCP port for incoming SOCKS5 connection. 
+
+Example: 
+<pre>
+SocksNode *socks = new SocksNode(network); 
+socks->listen(URL("tcp://localhost:8000"));
+Node *con = socks->accept(); // accepts a new connection 
+if(con) { do stuff } 
+</pre>
+**/
 class SocksNode : public Node{
 public:
 	SocksNode(Network *net);
@@ -567,7 +630,7 @@ private:
 	list< pair<socks_state_t, Node*> > accept_queue;
 	list< pair<time_t, Node*> > accepted; 
 };
-
+/*
 class LinkNode : public Node{
 public:
 	LinkNode(Network *net);
@@ -583,8 +646,43 @@ public:
 	virtual void run();
 	virtual void close();
 };
-
+*/
 class MemoryNode;
+
+/**
+An adapter node. 
+
+Use this node to convert an output of a node into an input. 
+
+Let's say that you have an SSLNode and you want to send data to this 
+node. There is no way to send encrypted data to an ssl node because it 
+uses it's _output variable and calls send() on that object when it 
+wants to output data. Similarly it calls recv() on the underlying 
+output object to read encrypted data form the underlying node. 
+
+The solution is to create a memory node that we set as output of the 
+SSLNode. The memory node then provides two function sendOutput() and 
+recvOutput() to make it possible to write to it's "output" buffer. 
+
+We then connect the send() of NodeAdapter to sendOutput() of the 
+memory node and through this scheme basically in a clean and 
+independent way make it possible to write to an input of any other 
+node which need only to care about it's _output node and read data 
+from it when it wants to read more data. 
+
+Example: 
+<pre>
+SSLNode *ssl = new SSLNode(network);
+NodeAdapter *input = new NodeAdapter(ssl); 
+
+input->send(encrypted_data, size); // sends encrypted block of data to 
+the input of ssl node. 
+ssl->recv(buffer, size); // reads decrypted data from the SSL node. 
+
+delete input; 
+delete ssl;
+</pre>
+**/
 class NodeAdapter : public Node{
 public:
 	NodeAdapter(Network *net, Node *other);
@@ -604,6 +702,39 @@ private:
 	MemoryNode *memnode;
 };
 
+/**
+Channel implements a channel interface on a VSLNode. 
+A single VSLNode can have many channels that are attached to it and 
+communicate with the remote end. A channel always has a remote end 
+object on the other side of the connection of VSLNode. 
+
+You create a channel object and attach it to a vsl node like this:
+Channel *chan = new Channel(network, vslnode); 
+
+This creates a channel that will be using VSLNode for communication 
+and sends a CMD_CHAN_INIT message to the VSLNode on the remote end 
+with a randomly generated hash that will be used to identify the 
+packets that are addressed to this channel. 
+
+You can then attach another VSL node on top of a Channel to enable 
+encryption of the channel data (in the case where you call 
+Channel::connect() to connect to another peer - then you always should 
+initialize a new encrypted session with that peer prior to sending 
+commands to it. This is done like this: 
+
+<pre>
+Channel *chan = new Channel(net, vslnode);
+// establish an outgoing connection on the remote host
+chan->connect(random[c].peer);
+// signal that we are starting to encrypt data 
+chan->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
+// create a new VSLNode and set it's output to the channel. 
+VSLNode *node = new VSLNode(this);
+node->set_output(parent);
+// we have to explicitly fire of the handshake. 
+node->do_handshake(SOCK_CLIENT);
+</pre>
+**/
 class Channel : public Node, public PacketHandler{
 public:
 	Channel(Network *net, VSLNode *link, const string &tag = "");
@@ -624,11 +755,20 @@ public:
 	
 	virtual void handlePacket(const Packet &pack);
 private: 
+	map<string, VSLNode*> m_Peers;
 	Node *m_pRelay;
 	VSLNode *m_pLink;
 	string m_sHash;
 };
 
+/**
+A memory based buffer node. 
+
+Used for building intermediate chains. For example the NodeAdapter 
+class is using a memory node that it sets as output of another node 
+and uses this object as a way to gather output data form another node 
+(which can call send() several times in a row). 
+**/
 class MemoryNode : public Node{
 public:
 	MemoryNode(Network *net);
@@ -739,12 +879,13 @@ public:
 	Network();
 	~Network();
 	
-	Node *createTunnel(const URL &destination, unsigned int length = 3);
+	Node *createTunnel(const list<URL> &links);
 	Node *connect(const URL &url);
 	void run();
-	void registerPeer(VSLNode *peer);
 	Node *createNode(const string &type);
 	void free(Node *node);
+	
+	void listen(const URL &url);
 	
 	VSLNode *server; 
 	

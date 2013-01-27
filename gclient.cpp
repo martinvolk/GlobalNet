@@ -117,14 +117,50 @@ int main(int argc, char* argv[])
 	//VSL::set_option("server_crt", "server.crt");
 	//VSL::set_option("server_key", "server.key");
 	//VSL::set_option("anonymity_level", "1");
-	
+
+VSL::SOCKINFO info;
+VSL::VSOCKET socket = VSL::socket(); 
+list<URL> path; 
+path.push_back(URL("vsl://localhost:9000"));
+path.push_back(URL("vsl://localhost:9000"));
+path.push_back(URL("tcp://google.com:80"));
+
+VSL::connect(socket, path);
+
+string request = "GET /\n";
+string response = "";
+VSL::send(socket, request.c_str(), request.length());
+
+time_t t = time(0);
+while(true){
+  char tmp[4096];
+  int rc; 
+  memset(tmp, 0, sizeof(tmp));
+  
+  VSL::getsockinfo(socket, &info);
+  if(info.state == VSL::VSOCKET_DISCONNECTED)
+    break;
+  
+  if((rc = VSL::recv(socket, tmp, sizeof(tmp)-1))>0){
+    response += tmp;
+  }
+  
+  if(time(0) - t > 10){
+    ERROR("Response timed out!");
+    exit(0);
+  }
+}
+cout<<"Response: "<<response<<endl;
+exit(0);
+
 	// find all peers
 	if(options[CONNECT].count() > 0){
 		vector<string> peers;
 		tokenize(string(options[CONNECT].first()->arg), string(","), peers);
 		for(vector<string>::iterator i = peers.begin(); i!=peers.end();i++){
 			// this will extend the network with actual physical peers identified by an IP address. 
-			VSL::add_peer(URL("vsl://"+(*i)));
+			VSL::VSOCKET sock = VSL::socket();
+			VSL::connect(sock, URL("vsl://"+(*i)));
 		}
 	}
 	
@@ -136,25 +172,26 @@ int main(int argc, char* argv[])
 	Service *socks = new SocksService();
 	Service *console = new ConsoleService(); 
 	
-	socks->listen(URL("tcp", "localhost", port));
+	if(socks->listen(URL("socks", "127.0.0.1", port)) == -1){
+		exit(0);
+	}
 	
 	// start the console service
 	if(options[CONSOLE_PORT].count() > 0){
-		console->listen(URL("tcp", "localhost", atoi(options[CONSOLE_PORT].first()->arg)));
+		console->listen(URL("tcp", "127.0.0.1", atoi(options[CONSOLE_PORT].first()->arg)));
 	} else {
-		console->listen(URL("tcp", "localhost", 2000));
+		console->listen(URL("tcp", "127.0.0.1", 2000));
 	}
 	
 	unsigned long usec = 0;
 	while(true){
 		if((usec % 100) == 0)
-			cout<<".";
+			cout<<"M";
 			fflush(stdout);
 		usec++;
 		// run main loop 
 		socks->run();
 		console->run();
-		VSL::run();
 		usleep(1000); // microseconds
 	}
 	

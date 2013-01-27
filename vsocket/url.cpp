@@ -20,7 +20,8 @@ URL::URL(const URL &other):
 	host_(other.host_),
 	path_(other.path_),
 	query_(other.query_),
-	port_(other.port_)
+	port_(other.port_),
+	url_(other.url_)
 	{
 }
 
@@ -30,7 +31,7 @@ URL::URL(const string &proto, const string &host, uint16_t port, const string &p
 	path_(path),
 	query_(query),
 	port_(port),
-	url_(proto+"://"+host+":"+VSL::to_string(port)+"/"+path+"?"+query){}
+	url_(protocol_+"://"+host_+":"+VSL::to_string(port_)+path_+((query_.length())?("?"+query_):"")){}
 	
 void URL::parse(const string& url_s)
 {

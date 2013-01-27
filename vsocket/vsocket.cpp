@@ -42,11 +42,10 @@ string con_state_to_string(int state){
 namespace VSL{
 	static Network *net;
 	static map<VSL::VSOCKET, Node*> sockets;
+	static pthread_t worker;
+	static pthread_mutex_t mu;
+	static bool running = false;
 	
-	int init(){
-		net = new Network();
-		return 1;
-	}
 	
 	static Node* _find_socket(VSOCKET socket){
 		map<VSOCKET, Node*>::iterator it = sockets.find(socket);
@@ -68,29 +67,97 @@ namespace VSL{
 		return -1;
 	}
 	
-	VSL::VSOCKET socket(VSL::SOCKPROTO type){
-		const char *type_str;
-		if(type == VSL::SOCKET_TCP) type_str = "tcp";
-		else if(type == VSL::SOCKET_SOCKS) type_str = "socks";
-		else ERROR("TYPE NOT IMPLEMENTED!");
-		
-		Node *con = net->createNode(type_str);
+	static void *_vsl_worker(void *data){
+		unsigned long usec;
+		while(true){
+			if((usec % 100) == 0){
+				cout<<"V";
+				fflush(stdout);
+			}
+			usec++;
+			
+			LOCK(mu, 0);
+			if(!running) break;
+			
+			for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
+				it != sockets.end(); it++)
+				if((*it).second)
+					(*it).second->run();
+			
+			UNLOCK(mu, 0);
+			
+			usleep(1000);
+			
+			LOCK(mu, 1);
+			net->run();
+			UNLOCK(mu, 1);
+			usleep(1000);
+		}
+		return 0;
+	}
+	
+	int init(){
+		net = new Network();
+		running = true;
+		pthread_mutex_init(&mu, 0);
+		pthread_create(&worker, 0, &_vsl_worker, 0);
+		return 1;
+	}
+	
+	void shutdown(){
+		LOCK(mu, 0);
+		delete net;
+		running = false;
+		UNLOCK(mu, 0);
+		void *ret;
+		pthread_join(worker, &ret);
+	}
+	
+	
+	int get_peers_allowing_connection_to(const URL &url, 
+					vector<PEERINFO> &peers, unsigned int maxcount){
+		LOCK(mu,0);
+		peers.reserve(peers.size()+maxcount);
+		vector<PeerDatabase::Record> random = net->peer_db.random(maxcount);
+		for(vector<PeerDatabase::Record>::iterator it = random.begin();
+			it != random.end(); it++){
+				PEERINFO pi;
+				pi.url = (*it).peer;
+				peers.push_back(pi);
+		}
+		return random.size(); 		
+	}
+	
+	VSL::VSOCKET socket(){
+		LOCK(mu,0);
 		VSOCKET sock = _create_socket();
-		sockets[sock] = con;
+		sockets[sock] = 0;
 		return sock;
 	}
 	
-	VSL::VSOCKET tunnel(const URL &url){
-		Node *tun = net->createTunnel(url);
-		if(tun){
-			VSOCKET sock = _create_socket();
-			sockets[sock] = tun;
-			return sock;
+	int connect(VSL::VSOCKET socket, const list<URL> &peers){
+		LOCK(mu,0);
+		Node *tun = _find_socket(socket);
+		if(tun) delete tun; 
+		tun = net->createTunnel(peers);
+		sockets[socket] = tun;
+		return 0;
+	}
+	
+	int connect(VSOCKET socket, const URL &url){
+		LOCK(mu,0);
+		Node *con = _find_socket(socket);
+		if(con){
+			con->close();
+			delete con;
 		}
-		return -1;
+		con = net->connect(url);
+		sockets[socket] = con;
+		return 1;
 	}
 	
 	VSL::VSOCKET accept(VSL::VSOCKET socket){
+		LOCK(mu,0);
 		Node *con = _find_socket(socket);
 		if(con){
 			Node *client = con->accept();
@@ -104,24 +171,14 @@ namespace VSL{
 		return -1; // invalid descriptor 
 	}
 	
-	int add_peer(const URL &url){
-		net->connect(url);
-		return -1;
-	}
-	
-	int connect(VSOCKET socket, const URL &url){
-		Node *con = _find_socket(socket);
-		
-		if(con){
-			con->connect(url);
-			return 1;
-		}
-		return -1;
-	}
 	
 	int listen(VSOCKET socket, const URL &url){
+		LOCK(mu,0);
 		Node *con = _find_socket(socket);
-		
+		if(!con){
+			con = net->createNode(url.protocol());
+			sockets[socket] = con;
+		}
 		if(con){
 			return con->listen(url); 
 		}
@@ -129,6 +186,7 @@ namespace VSL{
 	}
 	
 	int send(VSOCKET socket, const char *data, size_t size){
+		LOCK(mu,0);
 		Node *con = _find_socket(socket);
 		if(con){
 			return con->send(data, size);
@@ -137,6 +195,7 @@ namespace VSL{
 	}
 	
 	int recv(VSOCKET socket, char *data, size_t size){
+		LOCK(mu,0);
 		Node *con = _find_socket(socket);
 		if(con){
 			return con->recv(data, size);
@@ -144,19 +203,14 @@ namespace VSL{
 		return -1;
 	}
 	
-	void run(){
-		for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
-				it != sockets.end(); it++)
-			(*it).second->run();
-			
-		net->run();
-	}
-	
 	int close(VSOCKET sock){
+		LOCK(mu,0);
 		map<VSOCKET, Node*>::iterator it = sockets.find(sock);
 		if(it != sockets.end()){
-			(*it).second->close();
-			delete (*it).second;
+			if((*it).second != 0){
+				(*it).second->close();
+				delete (*it).second;
+			}
 			sockets.erase(it);
 			return 1;
 		}
@@ -164,9 +218,12 @@ namespace VSL{
 	}
 	
 	int getsockinfo(VSOCKET sock, SOCKINFO *info){
+		LOCK(mu,0);
 		Node *n = _find_socket(sock);
 		if(!n) return -1;
-		if(n->state & CON_STATE_CONNECTED)
+		if(n->state & CON_STATE_CONNECTING)
+			info->state = VSOCKET_CONNECTING;
+		else if(n->state & CON_STATE_CONNECTED)
 			info->state = VSOCKET_CONNECTED;
 		else if(n->state & CON_STATE_DISCONNECTED)
 			info->state = VSOCKET_DISCONNECTED;
@@ -177,17 +234,16 @@ namespace VSL{
 		return 0;
 	}
 	bool getsockopt(VSOCKET sock, const string &option, string &dst){
+		LOCK(mu,0);
 		Node *n = _find_socket(sock);
 		if(n){
 			return n->get_option(option, dst);
 		}
 		return false;
 	}
-	void shutdown(){
-		delete net;
-	}
 	
 	void print_stats(int socket){
+		LOCK(mu,0);
 		uint np = 0;
 		for(PeerList::iterator it = net->peers.begin();
 				it != net->peers.end(); it++ ){

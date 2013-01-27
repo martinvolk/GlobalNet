@@ -189,13 +189,16 @@ void SSLNode::run(){
 		return;
 	}
 	
-	Node::run();
+	if(m_bProcessingMainLoop) return;
+	SETFLAG(m_bProcessingMainLoop, 0);
+	
+	this->_output->run();
 		
 	// if we are waiting for connection and the downline has changed it's state
 	// to being connected, we can now switch to handshake mode and do the handshake. 
 	if((this->state & CON_STATE_INITIALIZED) && this->ssl && this->ctx && (this->_output->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
-		this->url = this->_output->url;
+		this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
 		
 		this->timer = milliseconds();
 		this->state = CON_STATE_SSL_HANDSHAKE; 
@@ -232,7 +235,7 @@ void SSLNode::run(){
 		// may happen that would make us forever stuck in handshake. 
 		// we need to close if we stay here for too long.. 
 		if((milliseconds()-this->timer) > CONNECTION_TIMEOUT){
-			LOG("SSL: connection timed out!");
+			LOG("SSL: connection timed out! "<<url.url());
 			state = CON_STATE_DISCONNECTED;
 			//this->close();
 			return;
@@ -241,7 +244,7 @@ void SSLNode::run(){
 			//LOG("SSL: Attempting to connect to "<<url.url());
 			if((res = SSL_connect(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->url = this->_output->url;
+				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
 				LOG("ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
@@ -252,7 +255,7 @@ void SSLNode::run(){
 			//LOG("SSL: accepting ssl connections on "<<url.url());
 			if((res=SSL_accept(this->ssl))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->url = this->_output->url;
+				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
 				LOG("ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{

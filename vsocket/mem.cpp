@@ -35,7 +35,7 @@ int MemoryNode::recv(char *data, size_t maxsize, size_t minsize){
 	if(BIO_ctrl_pending(this->read_buf) < minsize || BIO_ctrl_pending(this->read_buf) == 0) return 0;
 	int rc = BIO_read(read_buf, data, maxsize);
 	if(_output) rc = _output->recv(data, maxsize, minsize);
-	if(rc > 0) LOG("MEMNODE: recv "<<rc<<" bytes.");
+	//if(rc > 0) LOG("MEMNODE: recv "<<rc<<" bytes.");
 	return rc;
 }
 
@@ -45,9 +45,10 @@ int MemoryNode::connect(const URL &url){
 	return 1;
 }
 void MemoryNode::run(){
+	
+	/*
 	int rc;
 	char tmp[SOCKET_BUF_SIZE];
-	/*
 	if(_output){
 		if(BIO_ctrl_pending(write_buf)>0){
 			if((rc = BIO_read(write_buf, tmp, SOCKET_BUF_SIZE))>0)

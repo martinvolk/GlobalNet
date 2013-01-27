@@ -44,7 +44,7 @@ all: $(LIB)
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-$(LIB): if.o db.o node.o peer.o socks.o mem.o vsl.o ssl.o tcp.o udt.o bridge.o link.o net.o vsocket.o url.o channel.o
+$(LIB): if.o db.o node.o socks.o mem.o vsl.o ssl.o tcp.o udt.o net.o vsocket.o adapter.o url.o channel.o
 	ar rc $@ $^ 
 	
 clean:

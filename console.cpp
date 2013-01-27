@@ -28,7 +28,7 @@ ConsoleService::~ConsoleService(){
 int ConsoleService::listen(const URL &url){
 	LOG("[console] starting console service on port "<<url.port());
 	
-	VSL::VSOCKET con = VSL::socket(VSL::SOCKET_TCP);
+	VSL::VSOCKET con = VSL::socket();
 	VSL::listen(con, url);
 	this->socket = con;
 	
