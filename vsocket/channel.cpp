@@ -15,6 +15,7 @@ Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
 	} else {
 		m_sHash = hash;
 	}
+	m_pTarget = 0;
 	state = CON_STATE_ESTABLISHED; 
 	url = URL("vsl", m_sHash, 0);
 }
@@ -25,18 +26,26 @@ disconnect to the remote end of the channel.
 **/
 Channel::~Channel(){
 	this->close();
+	LOG(3, "CHANNEL: deleted "<<m_sHash);
 }
 
 void Channel::close(){
+	LOG(3, "CHANNEL: cleaning up! "<<m_sHash); 	
 	m_extLink->releaseChannel(this);
 	m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
 	// relay is always created here. 
-	LOG(3, "CHANNEL: cleaning up! "<<m_sHash);
 	if(m_pRelay) delete m_pRelay; 
+	if(m_pTarget) delete m_pTarget;
+	
+	// TODO: if this is put before deleting target, you get crash.
 	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
 			it != m_Peers.end(); it++){
 		delete *it;
 	}
+	m_Peers.clear();
+	
+	m_pRelay = 0;
+	m_pTarget = 0;
 	state = CON_STATE_DISCONNECTED;
 }
 
@@ -107,30 +116,64 @@ void Channel::handlePacket(const Packet &pack){
 
 int Channel::connect(const URL &url){
 	Packet pack;
-	LOG(2,"CHANNEL: sending relay connect to "<<m_extLink->url.url());
+	
+	// create a parallel channel and close ourselves. 
+	if(!m_pTarget){
+		m_pTarget = m_extLink->createChannel();
+		m_extLink->releaseChannel(this);
+	}
+	
+	LOG(2,"CHANNEL: sending RELAY_CONNECT to "<<m_extLink->url.url());
 	pack.cmd.code = RELAY_CONNECT;
 	pack.cmd.hash.from_hex_string(m_sHash);
 	pack.cmd.size = url.url().length();
 	memcpy(pack.data, url.url().c_str(), url.url().length());
-	return m_extLink->sendCommand(pack);
+	m_pTarget->sendCommand(pack);
+	
+	if(url.protocol().compare("vsl") == 0){
+		// put the remote channel into encryption mode and create a new 
+		// encryption node that will encrypt all the traffic. 
+		LOG(2,"CHANNEL: sending ENCRYPT_BEGIN to "<<m_pTarget->url.url());
+		m_pTarget->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
+		
+		VSLNode *node = new VSLNode(m_pNetwork);
+		node->set_output(m_pTarget);
+		node->do_handshake(SOCK_CLIENT);
+		m_Peers.push_back(node);
+		
+		// set the target for send()/recv() to a channel of the new node
+		m_pTarget = node->createChannel();
+	}
+	
+	return 1;
 }
 
 int Channel::sendCommand(const Packet &pack){
 	Packet p = pack;
 	p.cmd.hash.from_hex_string(m_sHash);
-	return m_extLink->sendCommand(p);
+	if(m_pTarget)
+		return m_pTarget->sendCommand(p);
+	else
+		return m_extLink->sendCommand(p);
 }
 int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
 	LOG(1,"CHANNEL: sendCommand: "<<cmd<<", "<<hexencode(data, size)<<": "
 			<<size<<" bytes.");
-	return m_extLink->sendCommand(cmd, data, size, m_sHash);
+	if(m_pTarget)
+		return m_pTarget->sendCommand(cmd, data, size, m_sHash);
+	else
+		return m_extLink->sendCommand(cmd, data, size, m_sHash);
 }
 int Channel::send(const char *data, size_t maxsize, size_t minsize){
-	return m_extLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
+	if(m_pTarget)
+		return m_pTarget->sendCommand(CMD_DATA, data, maxsize, m_sHash);
+	else
+		return m_extLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
 }
 
 int Channel::recv(char *data, size_t maxsize, size_t minsize){
 	if(m_pRelay) return 0; // disable reading for a relayed connection
+	if(m_pTarget) return m_pTarget->recv(data, maxsize, minsize);
 	if(BIO_ctrl_pending(this->read_buf) < minsize || BIO_ctrl_pending(this->read_buf) == 0) return 0;
 	int rc = BIO_read(read_buf, data, maxsize);
 	if(rc > 0) LOG(3,"CHANNEL: recv "<<rc<<" bytes.");
@@ -150,6 +193,9 @@ void Channel::run(){
 	char tmp[SOCKET_BUF_SIZE];
 	int rc;
 	
+	if(m_pTarget)
+		m_pTarget->run();
+	
 	for(list<VSLNode*>::iterator it = m_Peers.begin();
 		it != m_Peers.end(); it++){
 		(*it)->run();
@@ -165,6 +211,11 @@ void Channel::run(){
 	}
 	if(m_pRelay && m_pRelay->state & CON_STATE_DISCONNECTED){
 		LOG(3,"CHANNEL: closing channel "<<m_sHash<<": relay disconnected!");
+		close();
+		return;
+	}
+	if(m_pTarget && m_pTarget->state & CON_STATE_DISCONNECTED){
+		LOG(3,"CHANNEL: closing channel "<<m_sHash<<": target disconnected!");
 		close();
 		return;
 	}

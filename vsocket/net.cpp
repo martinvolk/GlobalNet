@@ -205,14 +205,11 @@ Node *Network::createTunnel(const list<URL> &links){
 		// relay to the next host
 		parent->connect(*li);
 		
-		if((*li).protocol().compare("vsl") != 0)
-			break;
-		
 		li++;
 		
 		// put the remote channel into encryption mode and create a new 
 		// encryption node that will encrypt all the traffic. 
-		LOG(1,"NET: sending ENCRYPT_BEGIN to "<<parent->url.url());
+		/*LOG(1,"NET: sending ENCRYPT_BEGIN to "<<parent->url.url());
 		parent->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
 		
 		VSLNode *node = new VSLNode(this);
@@ -222,7 +219,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		
 		Channel *chan = node->createChannel();
 		//parent_node = node;
-		parent = chan;
+		parent = chan;*/
 	}
 	//if(parent_node) peers[full_path] = parent_node;
 	return parent;

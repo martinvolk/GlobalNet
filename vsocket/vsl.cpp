@@ -181,9 +181,10 @@ Channel* VSLNode::createChannel(){
 
 void VSLNode::releaseChannel(const Channel *chan){
 	map<string, Channel*>::iterator it = m_Channels.find(chan->id());
-	if(it != m_Channels.end())
+	if(it != m_Channels.end()){
 		m_Channels.erase(it);
-	this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
+		this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
+	}
 }
 
 void VSLNode::do_handshake(SocketType type){

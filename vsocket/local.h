@@ -765,6 +765,7 @@ private:
 	Node *m_pRelay;
 	string m_sHash;
 	
+	Node *m_pTarget;
 	VSLNode *m_extLink;
 };
 
