@@ -7,6 +7,63 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
+Node::Node(Network *net){
+	m_pNetwork = net;
+	this->_output = 0;
+	this->_input = 0;
+	this->type = NODE_NONE;
+	
+	/* set up the memory-buffer BIOs */
+	this->read_buf = BIO_new(BIO_s_mem());
+	this->write_buf = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->read_buf, -1);
+	BIO_set_mem_eof_return(this->write_buf, -1);
+	
+	this->in_read = BIO_new(BIO_s_mem());
+	this->in_write = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->in_read, -1);
+	BIO_set_mem_eof_return(this->in_write, -1);
+	
+	m_bProcessingMainLoop = false;
+	this->state = CON_STATE_INITIALIZED;
+}
+
+Node::~Node(){
+	LOG(3,"NODE: deleting "<<this<<": "<<url.url());
+	this->close();
+	
+	this->state = CON_STATE_UNINITIALIZED;
+	/*if(this->_output && this->_output != this){
+		if(this->_output->_input == this)
+			this->_output->_input = 0;
+		if(this->_output->_output == this)
+			this->_output->_output = 0;
+		delete _output;
+	}*/
+	/*
+	if(this->_input && this->_input != this){
+		if(this->_input->_input == this)
+			this->_input->_input = 0;
+		if(this->_input->_output == this)
+			this->_input->_output = 0;
+		delete _input;
+	}*/
+	
+	
+}
+
+void Node::close(){
+	if(read_buf) BIO_free(this->read_buf);
+	if(write_buf) BIO_free(this->write_buf);
+	if(in_read) BIO_free(this->in_read);
+	if(in_write) BIO_free(this->in_write);
+	
+	read_buf = write_buf = in_read = in_write = 0;
+	
+	this->_output = 0;
+	this->_input = 0;
+}
+
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
 Node * Node::accept(){
@@ -62,31 +119,6 @@ void Node::peg(Node *other){
 	ERROR("CON_bridge not implemented!");
 }
 
-void Node::close(){
-	ERROR("CONNECTION: close() has to be implemented!");
-}
-
-Node::Node(Network *net){
-	m_pNetwork = net;
-	this->_output = 0;
-	this->_input = 0;
-	this->type = NODE_NONE;
-	
-	/* set up the memory-buffer BIOs */
-	this->read_buf = BIO_new(BIO_s_mem());
-	this->write_buf = BIO_new(BIO_s_mem());
-	BIO_set_mem_eof_return(this->read_buf, -1);
-	BIO_set_mem_eof_return(this->write_buf, -1);
-	
-	this->in_read = BIO_new(BIO_s_mem());
-	this->in_write = BIO_new(BIO_s_mem());
-	BIO_set_mem_eof_return(this->in_read, -1);
-	BIO_set_mem_eof_return(this->in_write, -1);
-	
-	m_bProcessingMainLoop = false;
-	this->state = CON_STATE_INITIALIZED;
-}
-
 void Node::set_output(Node *other){
 	if(this->_output) delete _output;
 	this->_output = other;
@@ -116,39 +148,3 @@ bool Node::get_option(const string &opt, string &res){
 	return false;
 }
 
-set<long> deleted;
-Node::~Node(){
-	//LOG(1,"NODE: deleting "<<this<<": "<<url.url());
-	if(deleted.find((long)this) != deleted.end()){
-		cout<<"DOUBLE FREE!"<<endl;
-	}
-	deleted.insert((long)this);
-	this->state = CON_STATE_UNINITIALIZED;
-	
-	if(read_buf) BIO_free(this->read_buf);
-	if(write_buf) BIO_free(this->write_buf);
-	if(in_read) BIO_free(this->in_read);
-	if(in_write) BIO_free(this->in_write);
-	
-	read_buf = write_buf = in_read = in_write = 0;
-	
-	/*if(this->_output && this->_output != this){
-		if(this->_output->_input == this)
-			this->_output->_input = 0;
-		if(this->_output->_output == this)
-			this->_output->_output = 0;
-		delete _output;
-	}*/
-	/*
-	if(this->_input && this->_input != this){
-		if(this->_input->_input == this)
-			this->_input->_input = 0;
-		if(this->_input->_output == this)
-			this->_input->_output = 0;
-		delete _input;
-	}*/
-	
-	this->_output = 0;
-	this->_input = 0;
-	
-}

@@ -28,9 +28,13 @@ VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
-			it != m_Channels.end(); it++){
-		// unlink us from the channel and disconnect the channel
-		(*it).second->close();
+			it != m_Channels.end(); ){
+		Channel *chan = (*it).second;
+		m_Channels.erase(it++);
+		
+		chan->close();
+		// we don't delete the channels because they may be referenced 
+		// outside of VSLNode
 	}
 	
 }
@@ -202,36 +206,14 @@ void VSLNode::_handle_packet(const Packet &packet){
 		if(it == m_Channels.end()){
 			Channel *chan = new Channel(m_pNetwork, this, packet.cmd.hash.hex());
 			m_Channels[packet.cmd.hash.hex()] = chan;
+			// signal successful connection
+			this->sendCommand(CMD_CHAN_ACK, "", 0, chan->id());
 		}
 		else{
 			ERROR("VSL: CHAN_INIT: attempting to initialize an already registered channel!");
 		}
-		//m_pNetwork->registerChannel(chan);
 	}
-	else if(packet.cmd.code == RELAY_CONNECT){
-		LOG(1,"VSL: received RELAY_CONNECT "<<packet.cmd.hash.hex()<<"from "<<url.url());
-		ERROR("VSL: doing nothing!");
-	}
-	else if(packet.cmd.code == CMD_ENCRYPT_BEGIN){
-		LOG(1,"VSL: received CMD_ENCRYPT_BEGIN "<<packet.cmd.hash.hex()<<"from "<<url.url());
-		ERROR("VSL: CMD_ENCRYPT_BEGIN doing nothing! ");
-	}
-	// received when the relay has no more data to send or when the remote 
-	// end on the relay has disconnected. Received on the client end. 
-	else if(packet.cmd.code == RELAY_DISCONNECT){
-		LOG(2,"CON: relay: remote end disconnected!");
-		// we need to clean up the data previously received from the relay. 
-		this->state = state | CON_STATE_IDLE; 
-	}
-	// this one is received when a relay has successfully connected 
-	// the message is sent by the BRIDGE node to it's _input once it's 
-	// output goes from CONNECTING to CONNECTED. It means that the other
-	// side of the bridge is now connected. 
-	else if(packet.cmd.code == RELAY_CONNECT_OK){
-		// we simply set our state to established as well
-		// if we have another bridge monitoring us, then it will pick up on this
-		this->state = CON_STATE_ESTABLISHED; 
-	}
+	
 }
 
 void VSLNode::run(){
@@ -250,17 +232,19 @@ void VSLNode::run(){
 	if(_output)
 		_output->run();
 	
+	vector<Channel*> chans; 
+	chans.reserve(m_Channels.size());
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
-			it != m_Channels.end();){
-		Channel *chan = (*it).second;
-		chan->run();
-		if(chan->state & CON_STATE_DISCONNECTED){
-			//chan->close();
-			m_Channels.erase(it++);
-			//delete chan;
-			continue;
+			it != m_Channels.end();it++){
+		chans.push_back((*it).second);
+	}
+	
+	for(vector<Channel*>::iterator it = chans.begin(); 
+			it != chans.end(); it++){
+		if((*it)->state & CON_STATE_DISCONNECTED){
+			m_Channels.erase(m_Channels.find((*it)->id()));
 		}
-		it++;
+		(*it)->run();
 	}
 	
 	// if we are waiting for connection and connection of the underlying node has been established

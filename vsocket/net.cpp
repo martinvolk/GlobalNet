@@ -192,7 +192,7 @@ Node *Network::createTunnel(const list<URL> &links){
 	LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 	// we connect directly to the first peer. 
 	Node *parent = connect(*li);
-	VSLNode *parent_node = 0;
+	//VSLNode *parent_node = 0;
 	li++;
 	
 	// and then through the first peer, we issue connection requests to 
@@ -202,6 +202,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		
 		LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 		
+		// relay to the next host
 		parent->connect(*li);
 		
 		if((*li).protocol().compare("vsl") != 0)
@@ -220,7 +221,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		peers[VSL::to_string(rand())] = node;
 		
 		Channel *chan = node->createChannel();
-		parent_node = node;
+		//parent_node = node;
 		parent = chan;
 	}
 	//if(parent_node) peers[full_path] = parent_node;

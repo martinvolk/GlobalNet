@@ -228,11 +228,12 @@ typedef enum {
 	CMD_ENCRYPT_BEGIN,
 	CMD_OUTBOUND_CONNECT,
 	CMD_CHAN_INIT,
+	CMD_CHAN_ACK,
 	CMD_CHAN_CLOSE, 
 	
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
-	RELAY_CONNECT_OK, /// sent by relay upon success. 
+	RELAY_ACK, /// sent by relay upon success. 
 	RELAY_ERROR, /// [REL_ERR_*] sent by relay upon error. 
 	RELAY_DATA,
 	RELAY_PAIR, /// request to pair us with another peer. Relay replies with RELAY_PAIR_RZ_CONNECT

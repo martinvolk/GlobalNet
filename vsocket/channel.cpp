@@ -19,6 +19,10 @@ Channel::Channel(Network *net, VSLNode *link, const string &hash):Node(net),
 	url = URL("vsl", m_sHash, 0);
 }
 
+/**
+Unregisters the channel from the underlying VSLNode and sends 
+disconnect to the remote end of the channel. 
+**/
 Channel::~Channel(){
 	this->close();
 }
@@ -43,14 +47,6 @@ void Channel::handlePacket(const Packet &pack){
 			LOG(2,"CHANNEL: Forwarding DATA to relay "<<m_pRelay->url.url()<<": "<<pack.cmd.size<<" bytes.");
 			m_pRelay->send(pack.data, pack.cmd.size);
 		}
-		else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
-			LOG(2,"CHANNEL: Forwarding CMD_ENCRYPT_BEGIN to relay "<<m_pRelay->url.url());
-			m_pRelay->sendCommand(pack);
-		}
-		else if(pack.cmd.code == RELAY_CONNECT){
-			LOG(2,"CHANNEL: Forwarding RELAY_CONNECT to relay "<<m_pRelay->url.url());
-			m_pRelay->sendCommand(pack);
-		}
 		else {
 			LOG(2,"CHANNEL: Forwarding COMMAND to relay "<<m_pRelay->url.url());
 			m_pRelay->sendCommand(pack);
@@ -59,41 +55,53 @@ void Channel::handlePacket(const Packet &pack){
 	}
 	
 	// otherwise we handle the packet internally.. :) 
-	if(pack.cmd.code == RELAY_CONNECT_OK){
+	if(pack.cmd.code == CMD_CHAN_ACK){
 		state = CON_STATE_ESTABLISHED; 
 	}
-	else if(pack.cmd.code == CMD_CHAN_CLOSE){
-		state = CON_STATE_DISCONNECTED;
-	}
-	else if(pack.cmd.code == CMD_CHAN_INIT){
-		LOG(2,"CHANNEL: received CHAN_INIT "<<pack.cmd.hash.hex()<<" from "<<url.url());
-	}
-	else if(pack.cmd.code == CMD_DATA){
-		LOG(2,"CHANNEL: DATA from "<<m_extLink->url.url()<<", "
-				<<pack.cmd.hash.hex()<<": "<<pack.cmd.size<<" bytes.");
-		BIO_write(read_buf, pack.data, pack.cmd.size);
-	}
-	else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
-		LOG(2,"CHANNEL: ENCRYPT_BEGIN from "<<m_extLink->url.url());
-		VSLNode *node = new VSLNode(m_pNetwork);
-		node->url = URL("vsl://"+m_sHash);
+	else if(state & CON_STATE_CONNECTED){
+		if(pack.cmd.code == CMD_CHAN_CLOSE){
+			state = CON_STATE_DISCONNECTED;
+			close();
+		}
+		else if(pack.cmd.code == CMD_CHAN_INIT){
+			LOG(2,"CHANNEL: received CHAN_INIT "<<pack.cmd.hash.hex()<<" from "<<url.url());
+		}
+		else if(pack.cmd.code == CMD_DATA){
+			LOG(2,"CHANNEL: DATA from "<<m_extLink->url.url()<<", "
+					<<pack.cmd.hash.hex()<<": "<<pack.cmd.size<<" bytes.");
+			BIO_write(read_buf, pack.data, pack.cmd.size);
+		}
+		else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
+			LOG(2,"CHANNEL: ENCRYPT_BEGIN from "<<m_extLink->url.url());
+			VSLNode *node = new VSLNode(m_pNetwork);
+			node->url = URL("vsl://"+m_sHash);
+			
+			NodeAdapter *adapter = new NodeAdapter(m_pNetwork, node);
+			
+			node->do_handshake(SOCK_SERVER);
+			m_pRelay = adapter; 
+			
+			m_Peers.push_back(node);
+		}
 		
-		NodeAdapter *adapter = new NodeAdapter(m_pNetwork, node);
-		
-		node->do_handshake(SOCK_SERVER);
-		m_pRelay = adapter; 
-		
-		m_Peers.push_back(node);
+		else if(pack.cmd.code == RELAY_CONNECT){
+			URL url = URL(pack.data);
+			LOG(2,"CHANNEL: got relay connect from "<<m_extLink->url.url()<<": "<<url.url());
+			// this will either return an existing connection or establish a new one
+			// the returned pointer is a channel and so can be deleted later. 
+			m_pRelay = m_pNetwork->connect(url);
+			if(!m_pRelay){
+				ERROR("CHANNEL: could not connect to "<<url.url());
+				return;
+			}
+			this->sendCommand(RELAY_ACK, "", 0, m_sHash);
+		}
+		else {
+			LOG(2, "CHANNEL: discarding unhandled command "<<pack.cmd.code);
+		}
 	}
-	
-	else if(pack.cmd.code == RELAY_CONNECT){
-		URL url = URL(pack.data);
-		LOG(2,"CHANNEL: got relay connect from "<<m_extLink->url.url()<<": "<<url.url());
-		// this will either return an existing connection or establish a new one
-		// the returned pointer is a channel and so can be deleted later. 
-		m_pRelay = m_pNetwork->connect(url);
-		if(!m_pRelay)
-			ERROR("CHANNEL: could not connect to "<<url.url());
+	else {
+		LOG(2, "CHANNEL: discarding unhandled command "<<pack.cmd.code);
 	}
 }
 
@@ -146,11 +154,10 @@ void Channel::run(){
 		it != m_Peers.end(); it++){
 		(*it)->run();
 	}
-	
-	// shuffle data between us and the relay. 
-	if(m_pRelay){// read data from one end and forward it to the other end and vice versa
+	if(m_pRelay && state & CON_STATE_CONNECTED){
+		// shuffle data between us and the relay. 
 		m_pRelay->run();
-		
+			
 		if ((rc = m_pRelay->recv(tmp, SOCKET_BUF_SIZE))>0){
 			LOG(3,"CHANNEL: read "<<rc<<" bytes from relayed connection..");
 			this->send(tmp, rc);
@@ -159,6 +166,7 @@ void Channel::run(){
 	if(m_pRelay && m_pRelay->state & CON_STATE_DISCONNECTED){
 		LOG(3,"CHANNEL: closing channel "<<m_sHash<<": relay disconnected!");
 		close();
+		return;
 	}
 }
 
