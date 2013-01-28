@@ -28,6 +28,8 @@ VSLNode::VSLNode(Network *net):Node(net){
 VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
+	close(); //?? safe?
+	
 	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){
@@ -42,6 +44,23 @@ VSLNode::~VSLNode(){
 	delete ssl;
 	if(udt) delete udt;
 	BIO_free(m_pPacketBuf);
+}
+
+
+void VSLNode::close(){
+	// send unsent data 
+	if(!this->_output){
+		this->state = CON_STATE_DISCONNECTED;
+		return;
+	}
+	while(BIO_ctrl_pending(this->write_buf)){
+		char tmp[SOCKET_BUF_SIZE];
+		int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
+		this->_output->send(tmp, rc);
+	}
+	LOG(1,"PEER: disconnected!");
+	this->_output->close();
+	this->state = CON_STATE_WAIT_CLOSE;
 }
 
 Channel* VSLNode::createChannel(){
@@ -364,21 +383,6 @@ void VSLNode::run(){
 	}
 }
 
-void VSLNode::close(){
-	// send unsent data 
-	if(!this->_output){
-		this->state = CON_STATE_DISCONNECTED;
-		return;
-	}
-	while(BIO_ctrl_pending(this->write_buf)){
-		char tmp[SOCKET_BUF_SIZE];
-		int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
-		this->_output->send(tmp, rc);
-	}
-	LOG(1,"PEER: disconnected!");
-	this->_output->close();
-	this->state = CON_STATE_WAIT_CLOSE;
-}
 
 void VSLNode::set_output(Node *other){
 	if(this->_output->_output == udt){

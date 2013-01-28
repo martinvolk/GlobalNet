@@ -186,7 +186,7 @@ int Channel::sendCommand(const Packet &pack){
 	return -1;
 }
 int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
-	LOG(1,"CHANNEL: sendCommand: "<<cmd<<", "<<hexencode(data, size)<<": "
+	LOG(3,"CHANNEL: sendCommand: "<<cmd<<", "<<hexencode(data, size)<<": "
 			<<size<<" bytes.");
 	if(m_pTarget)
 		return m_pTarget->sendCommand(cmd, data, size, m_sHash);

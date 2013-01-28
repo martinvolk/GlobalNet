@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
 	//VSL::set_option("server_crt", "server.crt");
 	//VSL::set_option("server_key", "server.key");
 	//VSL::set_option("anonymity_level", "1");
-
+/*
 VSL::SOCKINFO info;
 VSL::VSOCKET socket = VSL::socket(); 
 list<URL> path; 
@@ -153,7 +153,7 @@ cout<<"Response: "<<response<<endl;
 cout<<"Response: "<<response<<endl;
 VSL::shutdown();
 return 0;
-
+*/
 	// find all peers
 	if(options[CONNECT].count() > 0){
 		vector<string> peers;
