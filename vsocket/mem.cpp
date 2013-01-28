@@ -10,6 +10,7 @@ MemoryNode::~MemoryNode(){
 
 int MemoryNode::sendOutput(const char *data, size_t size, size_t minsize){
 	int rc = BIO_write(read_buf, data, size);
+	
 	LOG(3,"MEMNODE: sendOutput, wrote: "<<size<<" bytes.");
 	return rc;
 }

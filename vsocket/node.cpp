@@ -15,7 +15,7 @@ Node::Node(Network *net){
 	this->m_iRefCount = 1;
 	
 	/* set up the memory-buffer BIOs */
-	this->read_buf = BIO_new(BIO_s_mem());
+	/*this->read_buf = BIO_new(BIO_s_mem());
 	this->write_buf = BIO_new(BIO_s_mem());
 	BIO_set_mem_eof_return(this->read_buf, -1);
 	BIO_set_mem_eof_return(this->write_buf, -1);
@@ -24,7 +24,7 @@ Node::Node(Network *net){
 	this->in_write = BIO_new(BIO_s_mem());
 	BIO_set_mem_eof_return(this->in_read, -1);
 	BIO_set_mem_eof_return(this->in_write, -1);
-	
+	*/
 	m_bProcessingMainLoop = false;
 	this->state = CON_STATE_INITIALIZED;
 }
@@ -54,13 +54,13 @@ Node::~Node(){
 }
 
 void Node::close(){
-	if(read_buf) BIO_free(this->read_buf);
+	/*if(read_buf) BIO_free(this->read_buf);
 	if(write_buf) BIO_free(this->write_buf);
 	if(in_read) BIO_free(this->in_read);
 	if(in_write) BIO_free(this->in_write);
 	
 	read_buf = write_buf = in_read = in_write = 0;
-	
+	*/
 	this->_output = 0;
 	this->_input = 0;
 }
@@ -101,13 +101,13 @@ int Node::sendCommand(const Packet &pack){
 	//this->sendCommand((NodeMessage)pack.cmd.code, pack.data, pack.cmd.size, pack.cmd.hash.hex());
 	return 1;
 }
-
+/*
 int Node::recvCommand(Packet *dst){
 	// only used by Peer. 
 	//ERROR("CON: call to recvCommand(): NOT IMPLEMENTED!"); 
 	return 0;
 }
-
+*/
 void Node::run(){
 	if(_output)
 		_output->run();

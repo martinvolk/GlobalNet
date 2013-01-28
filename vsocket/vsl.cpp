@@ -209,7 +209,7 @@ int VSLNode::sendCommand(const Packet &pack){
 	LOG(3,"VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
 	return BIO_write(this->write_buf, pack.c_ptr(), pack.size());
 }
-
+/*
 int VSLNode::recvCommand(Packet *dst){
 	//LOG(1,"PEER: RECV COMMAND!");
 	if(this->_recv_packs.size()){
@@ -219,7 +219,7 @@ int VSLNode::recvCommand(Packet *dst){
 	}
 	return 0;
 }
-
+*/
 
 void VSLNode::do_handshake(SocketType type){
 	this->state = CON_STATE_CONNECTING;
@@ -351,17 +351,17 @@ void VSLNode::run(){
 				m_CurrentPacket.source = this;
 
 				if(!m_CurrentPacket.cmd.hash.is_zero()){
-					_handle_packet(m_CurrentPacket);
-					
 					map<string, Channel*>::iterator h = m_Channels.find(m_CurrentPacket.cmd.hash.hex()); 
 					if(h != m_Channels.end()){
 						LOG(2,"VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex()<<": "<<m_CurrentPacket.cmd.size<<" bytes.");
 						(*h).second->handlePacket(m_CurrentPacket);
 					}
+					
+					_handle_packet(m_CurrentPacket);
 				}
 				
 				
-				this->_recv_packs.push_back(m_CurrentPacket);
+				//this->_recv_packs.push_back(m_CurrentPacket);
 					
 				m_bPacketReadInProgress = false;
 			}

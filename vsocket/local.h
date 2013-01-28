@@ -58,7 +58,7 @@ Free software. Part of the GlobalNet project.
 using namespace std;
 
 // loglevel 1-3 (3 = detailed)
-#define LOGLEVEL 1
+#define LOGLEVEL 3
 
 #define LOG(lev, msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
 				(unsigned int)pthread_self()<<"]\t"<<msg << endl; \
@@ -378,12 +378,12 @@ public:
 	NodeType type;
 	
 	/// input read write buffers
-	BIO *in_read;
-	BIO *in_write;
+	//BIO *in_read;
+	//BIO *in_write;
 	
 	/// output read write buffers
-	BIO *read_buf;
-	BIO *write_buf;
+	//BIO *read_buf;
+	//BIO *write_buf;
 	
 	bool server_socket;
 	
@@ -397,15 +397,13 @@ public:
 	Node *_output; 
 	Node *_input;
 	
-	deque<Packet> _recv_packs;
-	
 	// virtual functions
 	virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(const Packet &pack);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
-	virtual int recvCommand(Packet *pack);
+	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
@@ -455,7 +453,7 @@ public:
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	virtual int sendCommand(const Packet &pack);
-	virtual int recvCommand(Packet *pack);
+	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const URL &url);
 	virtual Node* accept();
 	virtual void run();
