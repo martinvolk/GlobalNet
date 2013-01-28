@@ -120,7 +120,8 @@ VSL::SOCKINFO info;
 VSL::VSOCKET socket = VSL::socket(); 
 list<URL> path; 
 path.push_back(URL("vsl://31.192.230.183:9000"));
-path.push_back(URL("vsl://85.224.229.245:9000"));
+path.push_back(URL("vsl://31.192.230.183:9000"));
+//path.push_back(URL("vsl://85.224.229.245:9000"));
 path.push_back(URL("tcp://whatismyip.com:80"));
 
 VSL::connect(socket, path);
