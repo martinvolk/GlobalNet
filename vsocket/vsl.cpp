@@ -28,7 +28,7 @@ VSLNode::VSLNode(Network *net):Node(net){
 VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
-	close(); //?? safe?
+	//close(); //?? safe?
 	
 	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
@@ -37,7 +37,8 @@ VSLNode::~VSLNode(){
 	}
 	for(list<Channel*>::iterator it = chans.begin(); 
 			it != chans.end(); it++){
-		(*it)->m_extLink = 0;
+		//(*it)->m_extLink = 0;
+		//sendCommand(CMD_CHAN_CLOSE, "", 0, (*it)->id());
 		releaseChannel(*it);
 	}
 	m_Channels.clear();

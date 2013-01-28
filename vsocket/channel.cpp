@@ -34,6 +34,11 @@ Channel::~Channel(){
 void Channel::close(){
 	LOG(3, "CHANNEL: cleaning up! "<<m_sHash); 	
 	
+	if(m_extLink){
+		m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
+		m_extLink->releaseChannel(this);
+	}
+	
 	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
 			it != m_Peers.end(); it++){
 		// prevent deletion of the target
@@ -63,10 +68,7 @@ void Channel::close(){
 	m_pTarget = 0;
 	state = CON_STATE_DISCONNECTED;
 	
-	if(m_extLink){
-		m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
-		m_extLink->releaseChannel(this);
-	}
+	
 }
 
 void Channel::handlePacket(const Packet &pack){
@@ -169,8 +171,8 @@ int Channel::connect(const URL &url){
 		m_Peers.push_back(node);
 		
 		// set the target for send()/recv() to a channel of the new node
-		m_Targets.push_back(m_pTarget);
 		m_pTarget = node->createChannel();
+		m_Targets.push_back(m_pTarget);
 	}
 	
 	return 1;
