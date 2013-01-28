@@ -52,6 +52,12 @@ void Channel::close(){
 	}
 	m_Peers.clear();
 	
+	for(list<Channel*>::iterator it = m_Targets.begin();
+		it != m_Targets.end(); it++){
+		(*it)->m_extLink = 0; // they are all deleted
+		delete *it;
+	}
+	m_Targets.clear();
 	
 	m_pRelay = 0;
 	m_pTarget = 0;
@@ -163,6 +169,7 @@ int Channel::connect(const URL &url){
 		m_Peers.push_back(node);
 		
 		// set the target for send()/recv() to a channel of the new node
+		m_Targets.push_back(m_pTarget);
 		m_pTarget = node->createChannel();
 	}
 	
@@ -176,6 +183,7 @@ int Channel::sendCommand(const Packet &pack){
 		return m_pTarget->sendCommand(p);
 	else if(m_extLink)
 		return m_extLink->sendCommand(p);
+	return -1;
 }
 int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
 	LOG(1,"CHANNEL: sendCommand: "<<cmd<<", "<<hexencode(data, size)<<": "
@@ -184,12 +192,14 @@ int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const s
 		return m_pTarget->sendCommand(cmd, data, size, m_sHash);
 	else if(m_extLink)
 		return m_extLink->sendCommand(cmd, data, size, m_sHash);
+	return -1;
 }
 int Channel::send(const char *data, size_t maxsize, size_t minsize){
 	if(m_pTarget)
 		return m_pTarget->sendCommand(CMD_DATA, data, maxsize, m_sHash);
 	else if(m_extLink)
 		return m_extLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
+	return -1;
 }
 
 int Channel::recv(char *data, size_t maxsize, size_t minsize){

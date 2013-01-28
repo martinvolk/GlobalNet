@@ -771,10 +771,11 @@ private:
 	bool m_bDeleteInProgress;
 	
 	list<VSLNode*> m_Peers;
+	list<Channel*> m_Targets;
 	Node *m_pRelay;
 	string m_sHash;
 	
-	Node *m_pTarget;
+	Channel *m_pTarget;
 	VSLNode *m_extLink;
 };
 

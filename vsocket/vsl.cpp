@@ -44,6 +44,30 @@ VSLNode::~VSLNode(){
 	BIO_free(m_pPacketBuf);
 }
 
+Channel* VSLNode::createChannel(){
+	Channel *chan = new Channel(m_pNetwork, this); 
+	m_Channels[chan->id()] = chan;
+	chan->m_iRefCount++;
+	return chan;
+}
+
+void VSLNode::releaseChannel(const Channel *chan){
+	if(m_bReleasingChannel) return;
+	m_bReleasingChannel = true;
+	
+	map<string, Channel*>::iterator it = m_Channels.find(chan->id());
+	if(it != m_Channels.end()){
+		// remove it if it is internally created
+		this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
+		
+		if((*it).second->m_iRefCount == 1 && !(*it).second->m_bDeleteInProgress){
+			delete (*it).second;
+		}
+		m_Channels.erase(it);
+	}
+	m_bReleasingChannel = false;
+}
+
 int VSLNode::connect(const URL &url){ 
 	if(this->state & CON_STATE_CONNECTED){
 		cout<<"CON_connect: connection is already connected. Please call CON_close() before establishing a new one!"<<endl;
@@ -177,29 +201,6 @@ int VSLNode::recvCommand(Packet *dst){
 	return 0;
 }
 
-Channel* VSLNode::createChannel(){
-	Channel *chan = new Channel(m_pNetwork, this); 
-	m_Channels[chan->id()] = chan;
-	chan->m_iRefCount++;
-	return chan;
-}
-
-void VSLNode::releaseChannel(const Channel *chan){
-	if(m_bReleasingChannel) return;
-	m_bReleasingChannel = true;
-	
-	map<string, Channel*>::iterator it = m_Channels.find(chan->id());
-	if(it != m_Channels.end()){
-		// remove it if it is internally created
-		this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
-		
-		if((*it).second->m_iRefCount == 1 && !(*it).second->m_bDeleteInProgress){
-			delete (*it).second;
-		}
-		m_Channels.erase(it);
-	}
-	m_bReleasingChannel = false;
-}
 
 void VSLNode::do_handshake(SocketType type){
 	this->state = CON_STATE_CONNECTING;
