@@ -193,10 +193,10 @@ void VSLNode::releaseChannel(const Channel *chan){
 		this->sendCommand(CMD_CHAN_CLOSE, "", 0, chan->id());
 		
 		if((*it).second->m_iRefCount == 1 && !(*it).second->m_bDeleteInProgress){
-			(*it).second->m_extLink = 0;
 			(*it).second->close();
 			delete (*it).second;
 		}
+		(*it).second->m_extLink = 0;
 		m_Channels.erase(it);
 	}
 	m_bReleasingChannel = false;
