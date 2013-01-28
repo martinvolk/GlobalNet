@@ -236,6 +236,7 @@ Node *Network::connect(const URL &url){
 			m_pPeerDb->insert(r);
 		}
 		else {
+			LOG(3, "NET: using an already connected peer for "<<url.url());
 			node = (*it).second;
 		}
 		return node->createChannel();

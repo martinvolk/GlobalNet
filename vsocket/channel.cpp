@@ -109,7 +109,7 @@ void Channel::handlePacket(const Packet &pack){
 		
 		else if(pack.cmd.code == RELAY_CONNECT){
 			URL url = URL(pack.data);
-			LOG(2,"CHANNEL: got relay connect from "<<m_extLink->url.url()<<": "<<url.url());
+			LOG(2,"CHANNEL: got RELAY_CONNECT from "<<m_extLink->url.url()<<": "<<url.url());
 			// this will either return an existing connection or establish a new one
 			// the returned pointer is a channel and so can be deleted later. 
 			m_pRelay = m_pNetwork->connect(url);
