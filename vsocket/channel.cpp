@@ -90,12 +90,12 @@ void Channel::handlePacket(const Packet &pack){
 			LOG(2,"CHANNEL: received CHAN_INIT "<<pack.cmd.hash.hex()<<" from "<<url.url());
 		}
 		else if(pack.cmd.code == CMD_DATA){
-			LOG(2,"CHANNEL: DATA from "<<m_extLink->url.url()<<", "
+			LOG(2,"CHANNEL: DATA at "<<url.url()<<", "
 					<<pack.cmd.hash.hex()<<": "<<pack.cmd.size<<" bytes.");
 			BIO_write(read_buf, pack.data, pack.cmd.size);
 		}
 		else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
-			LOG(2,"CHANNEL: ENCRYPT_BEGIN from "<<m_extLink->url.url());
+			LOG(2,"CHANNEL: ENCRYPT_BEGIN at "<<url.url());
 			VSLNode *node = new VSLNode(m_pNetwork);
 			node->url = URL("vsl://"+m_sHash);
 			
@@ -109,7 +109,7 @@ void Channel::handlePacket(const Packet &pack){
 		
 		else if(pack.cmd.code == RELAY_CONNECT){
 			URL url = URL(pack.data);
-			LOG(2,"CHANNEL: got RELAY_CONNECT from "<<m_extLink->url.url()<<": "<<url.url());
+			LOG(2,"CHANNEL: got RELAY_CONNECT at "<<url.url()<<": "<<url.url());
 			// this will either return an existing connection or establish a new one
 			// the returned pointer is a channel and so can be deleted later. 
 			m_pRelay = m_pNetwork->connect(url);
@@ -134,6 +134,9 @@ void Channel::handlePacket(const Packet &pack){
 int Channel::connect(const URL &url){
 	Packet pack;
 	
+	if(!m_extLink || state & CON_STATE_DISCONNECTED)
+		return -1;
+		
 	// create a parallel channel and close ourselves. 
 	if(!m_pTarget){
 		m_pTarget = m_extLink->createChannel();
@@ -141,7 +144,7 @@ int Channel::connect(const URL &url){
 		m_extLink->releaseChannel(this);
 	}
 	
-	LOG(2,"CHANNEL: sending RELAY_CONNECT to "<<m_extLink->url.url());
+	LOG(2,"CHANNEL: sending RELAY_CONNECT to "<<m_pTarget->url.url());
 	pack.cmd.code = RELAY_CONNECT;
 	pack.cmd.hash.from_hex_string(m_sHash);
 	pack.cmd.size = url.url().length();
@@ -171,7 +174,7 @@ int Channel::sendCommand(const Packet &pack){
 	p.cmd.hash.from_hex_string(m_sHash);
 	if(m_pTarget)
 		return m_pTarget->sendCommand(p);
-	else
+	else if(m_extLink)
 		return m_extLink->sendCommand(p);
 }
 int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag){
@@ -179,13 +182,13 @@ int Channel::sendCommand(NodeMessage cmd, const char *data, size_t size, const s
 			<<size<<" bytes.");
 	if(m_pTarget)
 		return m_pTarget->sendCommand(cmd, data, size, m_sHash);
-	else
+	else if(m_extLink)
 		return m_extLink->sendCommand(cmd, data, size, m_sHash);
 }
 int Channel::send(const char *data, size_t maxsize, size_t minsize){
 	if(m_pTarget)
 		return m_pTarget->sendCommand(CMD_DATA, data, maxsize, m_sHash);
-	else
+	else if(m_extLink)
 		return m_extLink->sendCommand(CMD_DATA, data, maxsize, m_sHash);
 }
 

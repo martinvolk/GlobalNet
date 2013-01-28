@@ -196,6 +196,7 @@ void VSLNode::releaseChannel(const Channel *chan){
 			(*it).second->close();
 			delete (*it).second;
 		}
+		(*it).second->state = CON_STATE_DISCONNECTED;
 		(*it).second->m_extLink = 0;
 		m_Channels.erase(it);
 	}
