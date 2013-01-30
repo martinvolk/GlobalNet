@@ -82,8 +82,15 @@ Network::Network(){
 	// use this function to initialize the UDT library
 	UDT::startup();
 	
-	this->server = new VSLNode(this);
-	this->m_pPeerDb = new PeerDatabase();
+	
+	// blacklist our own address from local peer database to avoid localhost connections
+	//m_pPeerDb->blacklist(listen_adr);
+}
+
+void Network::init(){
+	unique_ptr<UDTNode> udt(new UDTNode(shared_from_this()));
+	unique_ptr<SSLNode> ssl(new SSLNode(shared_from_this(), move(udt), SOCK_SERVER));
+	this->server = unique_ptr<VSLNode>(new VSLNode(shared_from_this(), move(ssl)));
 	this->last_peer_list_broadcast = 0;
 	
 	vector< pair<string, string> > ifs = inet_get_interfaces();
@@ -107,41 +114,34 @@ Network::Network(){
 			ERROR("ERROR no available listen ports left!");
 		}
 	}
-	
-	// blacklist our own address from local peer database to avoid localhost connections
-	//m_pPeerDb->blacklist(listen_adr);
 }
-
 
 Network::~Network(){
 	LOG(1,"NET: shutting down..");
 	
 	// close connections
-	for(PeerList::iterator it = peers.begin(); it != peers.end();){
-		delete (*it).second;
-		peers.erase(it++);
+	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end();){
+		(*it).second.reset();
+		m_Peers.erase(it++);
 	}
-	delete m_pPeerDb;
-	delete server;
-	
-	this->server = 0;
-	m_pPeerDb = 0;
-	
+	m_Peers.clear();
+	server.reset();
+
 	// use this function to release the UDT library
 	UDT::cleanup();
 }
 
-Peer *Network::getRandomPeer(){
-	int r = rand() % peers.size();
+shared_ptr<VSLNode> Network::getRandomPeer(){
+	int r = rand() % m_Peers.size();
 	LOG(1,"=================> USING PEER "<<r);
-	if(!peers.size()) return 0;
+	if(!m_Peers.size()) return shared_ptr<VSLNode>();
 	int c=0;
-	for(PeerList::iterator it = peers.begin();
-			it != peers.end(); it++){
+	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin();
+			it != m_Peers.end(); it++){
 		if(r == c) return (*it).second;
 		c++;
 	}
-	return 0;
+	return shared_ptr<VSLNode>();
 }
 
 /**
@@ -177,13 +177,13 @@ connection to google and connect to yahoo instead.
 
 **/
 
-Node *Network::createTunnel(const list<URL> &links){
+unique_ptr<Node> Network::createTunnel(const list<URL> &links){
 	list<URL>::const_iterator li = links.begin();
-	if(!links.size()) return 0;
+	if(!links.size()) return unique_ptr<Node>();
 	
 	LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 	// we connect directly to the first peer. 
-	Node *parent = connect(*li);
+	unique_ptr<Node> parent = this->connect(*li);
 	//VSLNode *parent_node = 0;
 	li++;
 	
@@ -205,7 +205,7 @@ Node *Network::createTunnel(const list<URL> &links){
 		parent->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
 		
 		VSLNode *node = new VSLNode(this);
-		node->set_output(parent);
+		node->setOutput(parent);
 		node->do_handshake(SOCK_CLIENT);
 		peers[VSL::to_string(rand())] = node;
 		
@@ -214,26 +214,28 @@ Node *Network::createTunnel(const list<URL> &links){
 		parent = chan;*/
 	}
 	//if(parent_node) peers[full_path] = parent_node;
-	return parent;
+	return move(parent);
 }
 
 string con_state_to_string(int state);
 
 // establish a new connection to the url
-Node *Network::connect(const URL &url){
+unique_ptr<Node> Network::connect(const URL &url){
 	if(url.protocol().compare("vsl") == 0){
-		PeerList::iterator it = peers.find(url.url());
+		map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.find(url.url());
 		// if don't have a connection then we connect
-		VSLNode *node = 0;
-		if(it == peers.end()){
+		shared_ptr<VSLNode> node;
+		if(it == m_Peers.end()){
 			LOG(1,"NET: connecting to peer "<<url.url());
-			node = new VSLNode(this);
+			unique_ptr<UDTNode> udt(new UDTNode(shared_from_this()));
+			unique_ptr<SSLNode> ssl(new SSLNode(shared_from_this(), move(udt), SOCK_CLIENT));
+			node = shared_ptr<VSLNode>(new VSLNode(shared_from_this(), move(ssl)));
 			node->connect(url);
-			peers[url.url()] = node;
+			m_Peers[url.url()] = node;
 			
 			PeerDatabase::Record r;
 			r.peer = url;
-			m_pPeerDb->insert(r);
+			m_pPeerDb.insert(r);
 		}
 		else {
 			LOG(3, "NET: using an already connected peer for "<<url.url());
@@ -242,14 +244,14 @@ Node *Network::connect(const URL &url){
 		return node->createChannel();
 	}
 	else if(url.protocol().compare("tcp") == 0){
-		TCPNode *tcp = new TCPNode(this);
+		unique_ptr<TCPNode> tcp(new TCPNode(shared_from_this()));
 		tcp->connect(url);
-		return tcp;
+		return move(tcp);
 	}
 	else {
 		ERROR("NET: connect: INVALID PROTOCOL: "<<url.protocol());
 	}
-	return 0;
+	return unique_ptr<Node>();
 }
 
 void Network::run() {
@@ -258,22 +260,22 @@ void Network::run() {
 	if(this->server){
 		PeerDatabase::Record r;
 		r.peer = this->server->url;
-		m_pPeerDb->insert(r);
+		m_pPeerDb.insert(r);
 	}
 	
 	// accept incoming client connections on the standard port 
-	VSLNode *client = 0;
-	if(server && server->state & CON_STATE_LISTENING && (client = (VSLNode*)this->server->accept())){
+	shared_ptr<Node> client;
+	if(server && server->state & CON_STATE_LISTENING && (client = this->server->accept())){
 		PeerDatabase::Record r;
 		r.peer = client->url;
 		r.hub = server->url;
-		m_pPeerDb->insert(r);
+		m_pPeerDb.insert(r);
 		
 		//peer->setListener(new _PeerListener(this));
-		if(peers.find(client->url.url()) != peers.end()){
+		if(m_Peers.find(client->url.url()) != m_Peers.end()){
 			ERROR("NET: run: trying to add a peer that already exists!!");
 		}
-		peers[client->url.url()] = client;
+		m_Peers[client->url.url()] = dynamic_pointer_cast<VSLNode>(client);
 	}
 	
 	//for(map<Channel*, Channel*>::iterator it = channels.begin();
@@ -281,13 +283,13 @@ void Network::run() {
 	//	(*it).second->run();
 	//}
 	
-	for(PeerList::iterator it = peers.begin(); 
-			it != peers.end(); ){
-		Peer *peer = (*it).second;
+	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); 
+			it != m_Peers.end(); ){
+		shared_ptr<VSLNode> peer = (*it).second;
 		Packet pack;
 		if(peer->state & CON_STATE_DISCONNECTED){
-			peers.erase(it++);
-			delete peer;
+			m_Peers.erase(it++);
+			peer.reset();
 			//it++;
 			continue;
 		}
@@ -300,20 +302,19 @@ void Network::run() {
 		LOG(1,endl<<"CONNECTIONS:");
 		
 		LOG(1,"PEERS:");
-		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
-			Peer *p = (*it).second;
-			LOG(1,(*it).first<<", state: "<<con_state_to_string(p->state));
+		for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
+			LOG(1,(*it).first<<", state: "<<con_state_to_string((*it).second->state));
 		}
-		for(PeerList::iterator it = peers.begin(); it != peers.end(); it++){
+		for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
 			//LOG(1,"NET: sending peer list to the peer.");
-			Peer *p = (*it).second;
+			shared_ptr<Peer> p = (*it).second;
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 
 			r.peer = p->url;
-			this->m_pPeerDb->update(r);
+			this->m_pPeerDb.update(r);
 			
 			// send a peer list to the peer 
-			string peers = m_pPeerDb->to_string(25);
+			string peers = m_pPeerDb.to_string(25);
 			p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length(), "");
 		}
 		this->last_peer_list_broadcast = time(0);
@@ -322,27 +323,29 @@ void Network::run() {
 	
 }
 
-
-Node *Network::createNode(const string &name){
+shared_ptr<Node> Network::createNode(const string &name){
 	if(name.compare("vsl")==0){
-		return new VSLNode(this);
+		//unique_ptr<Node> udt(new UDTNode(shared_from_this()));
+		//unique_ptr<Node> ssl(new SSLNode(shared_from_this(), move(udt)));
+		//return shared_ptr<Node>(new VSLNode(shared_from_this(), move(ssl)));
+		return shared_ptr<Node>();
 	}
 	else if(name.compare("tcp")==0){
-		return new TCPNode(this);
+		return shared_ptr<Node>(new TCPNode(shared_from_this()));
 	}
 	else if(name.compare("udt")==0){
-		return new UDTNode(this);
+		return shared_ptr<Node>(new UDTNode(shared_from_this()));
 	}
-	else if(name.compare("ssl")==0){
-		return new SSLNode(this);
-	}
+	//else if(name.compare("ssl")==0){
+	//	return shared_ptr<Node>(new SSLNode(shared_from_this(), unique_ptr<Node>(new TCPNode(shared_from_this()))));
+	//}
 	else if(name.compare("socks")==0){
-		return new SocksNode(this);
+		return shared_ptr<Node>(new SocksNode(shared_from_this()));
 	}
 	else{
 		ERROR("Unknown socket type '"<<name<<"'");
 	}
-	return 0;
+	return shared_ptr<Node>();
 }
 
 void Network::free(Node *node){

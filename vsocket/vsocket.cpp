@@ -40,19 +40,19 @@ string con_state_to_string(int state){
 
 
 namespace VSL{
-	static Network *net;
-	static map<VSL::VSOCKET, Node*> sockets;
+	static shared_ptr<Network> net;
+	static map<VSL::VSOCKET, shared_ptr<Node> > sockets;
 	static pthread_t worker;
 	static pthread_mutex_t mu;
 	static bool running = false;
 	
 	
-	static Node* _find_socket(VSOCKET socket){
-		map<VSOCKET, Node*>::iterator it = sockets.find(socket);
+	static shared_ptr<Node> _find_socket(VSOCKET socket){
+		map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.find(socket);
 		if(it != sockets.end()){
 			return (*it).second;
 		}
-		return 0;
+		return shared_ptr<Node>();
 	}
 	
 	static VSOCKET _create_socket(){
@@ -60,7 +60,7 @@ namespace VSL{
 		while(true){
 			r = rand();
 			if(sockets.find(r) == sockets.end()){
-				sockets[r] = 0;
+				sockets[r] = shared_ptr<Node>();
 				return r;
 			}
 		}
@@ -79,7 +79,7 @@ namespace VSL{
 			LOCK(mu, 0);
 			if(!running) break;
 			
-			for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
+			for(map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.begin(); 
 				it != sockets.end(); it++){
 				if((*it).second)
 					(*it).second->run();
@@ -92,7 +92,8 @@ namespace VSL{
 	}
 	
 	int init(){
-		net = new Network();
+		net = shared_ptr<Network>(new Network());
+		net->init();
 		running = true;
 		pthread_mutex_init(&mu, 0);
 		pthread_create(&worker, 0, &_vsl_worker, 0);
@@ -101,13 +102,13 @@ namespace VSL{
 	
 	void shutdown(){
 		LOCK(mu, 0);
-		for(map<VSOCKET, Node*>::iterator it = sockets.begin(); 
+		for(map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.begin(); 
 				it != sockets.end(); it++){
 			(*it).second->close();
-			delete (*it).second;
+			(*it).second.reset();
 		}
 		sockets.clear();
-		delete net;
+		net.reset();
 		running = false;
 		UNLOCK(mu, 0);
 		void *ret;
@@ -119,7 +120,7 @@ namespace VSL{
 					vector<PEERINFO> &peers, unsigned int maxcount){
 		LOCK(mu,0);
 		peers.reserve(peers.size()+maxcount);
-		vector<PeerDatabase::Record> random = net->m_pPeerDb->random(maxcount);
+		vector<PeerDatabase::Record> random = net->m_pPeerDb.random(maxcount);
 		for(vector<PeerDatabase::Record>::iterator it = random.begin();
 			it != random.end(); it++){
 				PEERINFO pi;
@@ -132,14 +133,14 @@ namespace VSL{
 	VSL::VSOCKET socket(){
 		LOCK(mu,0);
 		VSOCKET sock = _create_socket();
-		sockets[sock] = 0;
+		sockets[sock] = shared_ptr<Node>();
 		return sock;
 	}
 	
 	int connect(VSL::VSOCKET socket, const list<URL> &peers){
 		LOCK(mu,0);
-		Node *tun = _find_socket(socket);
-		if(tun) delete tun; 
+		shared_ptr<Node> tun = _find_socket(socket);
+		if(tun) tun.reset(); 
 		tun = net->createTunnel(peers);
 		sockets[socket] = tun;
 		return 0;
@@ -147,10 +148,10 @@ namespace VSL{
 	
 	int connect(VSOCKET socket, const URL &url){
 		LOCK(mu,0);
-		Node *con = _find_socket(socket);
+		shared_ptr<Node> con = _find_socket(socket);
 		if(con){
 			con->close();
-			delete con;
+			con.reset();
 		}
 		con = net->connect(url);
 		sockets[socket] = con;
@@ -159,9 +160,9 @@ namespace VSL{
 	
 	VSL::VSOCKET accept(VSL::VSOCKET socket){
 		LOCK(mu,0);
-		Node *con = _find_socket(socket);
+		shared_ptr<Node> con = _find_socket(socket);
 		if(con){
-			Node *client = con->accept();
+			shared_ptr<Node> client = con->accept();
 			if(client){
 				VSOCKET s = _create_socket();
 				sockets[s] = client; 
@@ -175,7 +176,7 @@ namespace VSL{
 	
 	int listen(VSOCKET socket, const URL &url){
 		LOCK(mu,0);
-		Node *con = _find_socket(socket);
+		shared_ptr<Node> con = _find_socket(socket);
 		if(!con){
 			con = net->createNode(url.protocol());
 			sockets[socket] = con;
@@ -188,7 +189,7 @@ namespace VSL{
 	
 	int send(VSOCKET socket, const char *data, size_t size){
 		LOCK(mu,0);
-		Node *con = _find_socket(socket);
+		shared_ptr<Node> con = _find_socket(socket);
 		if(con){
 			return con->send(data, size);
 		}
@@ -197,7 +198,7 @@ namespace VSL{
 	
 	int recv(VSOCKET socket, char *data, size_t size){
 		LOCK(mu,0);
-		Node *con = _find_socket(socket);
+		shared_ptr<Node> con = _find_socket(socket);
 		if(con){
 			return con->recv(data, size);
 		}
@@ -206,11 +207,11 @@ namespace VSL{
 	
 	int close(VSOCKET sock){
 		LOCK(mu,0);
-		map<VSOCKET, Node*>::iterator it = sockets.find(sock);
+		map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.find(sock);
 		if(it != sockets.end()){
 			if((*it).second != 0){
 				(*it).second->close();
-				delete (*it).second;
+				(*it).second.reset();
 			}
 			sockets.erase(it);
 			return 1;
@@ -220,7 +221,7 @@ namespace VSL{
 	
 	int getsockinfo(VSOCKET sock, SOCKINFO *info){
 		LOCK(mu,0);
-		Node *n = _find_socket(sock);
+		shared_ptr<Node> n = _find_socket(sock);
 		if(!n) return -1;
 		if(n->state & CON_STATE_CONNECTING)
 			info->state = VSOCKET_CONNECTING;
@@ -236,7 +237,7 @@ namespace VSL{
 	}
 	bool getsockopt(VSOCKET sock, const string &option, string &dst){
 		LOCK(mu,0);
-		Node *n = _find_socket(sock);
+		shared_ptr<Node> n = _find_socket(sock);
 		if(n){
 			return n->get_option(option, dst);
 		}
@@ -246,9 +247,9 @@ namespace VSL{
 	void print_stats(int socket){
 		LOCK(mu,0);
 		uint np = 0;
-		for(PeerList::iterator it = net->peers.begin();
-				it != net->peers.end(); it++ ){
-			Peer *peer = (*it).second;
+		for(map<string, shared_ptr<VSLNode> >::iterator it = net->m_Peers.begin();
+				it != net->m_Peers.end(); it++ ){
+			shared_ptr<VSLNode> peer = (*it).second;
 			SEND_SOCK(socket, "peer: " << peer->url.url()<<" state: "<<con_state_to_string(peer->state));
 			np++;
 		}

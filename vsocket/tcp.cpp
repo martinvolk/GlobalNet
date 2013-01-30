@@ -56,20 +56,19 @@ int TCPNode::connect(const URL &url){
 	return 1;
 }
 
-Node *TCPNode::accept(){
+unique_ptr<Node> TCPNode::accept(){
 	struct sockaddr_in adr_clnt;  
 	unsigned int len_inet = sizeof adr_clnt;  
 	char clientservice[32];
 	
 	int z;
-	TCPNode *con = 0;
 	
 	if(!(this->state & CON_STATE_LISTENING)){
-		return 0;
+		return unique_ptr<Node>();
 	}
 	if((z = accept4(this->socket, (struct sockaddr *)&adr_clnt, &len_inet, SOCK_NONBLOCK))>0){
 		
-		con = new TCPNode(m_pNetwork);
+		unique_ptr<TCPNode> con(new TCPNode(m_pNetwork));
 		//NET_createConnection(this->net, "tcp", false);
 		
 		char host[NI_MAXHOST];
@@ -84,11 +83,11 @@ Node *TCPNode::accept(){
 		int val = fcntl(z, F_GETFL, 0);
 		fcntl(z, F_SETFL, val | O_NONBLOCK);
 		
-		return con;
+		return move(con);
 	} else if(errno != EAGAIN) {
 		//perror("accept");
 	}
-	return 0;
+	return unique_ptr<Node>();
 }
 
 int TCPNode::listen(const URL &url){
@@ -148,15 +147,27 @@ close:
 	return 0;
 }
 
-int TCPNode::recv(char *data, size_t size, size_t minsize){
-	if(BIO_ctrl_pending(this->read_buf) < minsize) return 0;
-	int rc = BIO_read(this->read_buf, data, size);
+int TCPNode::recv(char *data, size_t size, size_t minsize) const{
+	if(m_ReadBuffer.input_pending() < minsize)  return 0;
+	//m_ReadBuffer.recv(data, size, minsize);
+	return m_ReadBuffer.recv(data, size, minsize);
+	//vector<char> buf; buf.reserve(size); 
+	//buf<<m_ReadBuffer;
+	//memcpy(data, &buf[0], size);
+	//if(BIO_ctrl_pending(this->read_buf) < minsize) return 0;
+	//int rc = BIO_read(this->read_buf, data, size);
 	//if(rc>0)LOG(1,"TCP: recv "<<rc<<" bytes.");
-	return rc;
+	//return buf.size();
 }
 
-int TCPNode::send(const char *data, size_t size, size_t minsize){
-	return BIO_write(this->write_buf, data, size);
+int TCPNode::send(const char *data, size_t size){
+	//LOG(1,"TCP: sending "<<rc<<" bytes of data to "<<url.url());
+	int rc; 
+	if((rc = ::send(this->socket, data, size, MSG_NOSIGNAL))>0){
+		LOG(1,"TCP: sent "<<rc<<" bytes of data to TCP socket "<<url.url());
+	}
+	return rc;
+	//return BIO_write(this->write_buf, data, size);
 }
 
 void TCPNode::run(){
@@ -187,20 +198,12 @@ void TCPNode::run(){
 		LOG(1,"[tcp] connected to "<<url.url());
 	}*/
 	if(this->state & CON_STATE_CONNECTED){
-		// send/recv data
-		while(!BIO_eof(this->write_buf)){
-			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				//LOG(1,"TCP: sending "<<rc<<" bytes of data to "<<url.url());
-				if((rc = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))<0){
-					perror("TCP send");
-				}
-			}
-		}
 		if((rc = ::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			//LOG(1,"TCP: received "<<rc<<" bytes of data!");
-			BIO_write(this->read_buf, tmp, rc);
+			LOG(3,"TCP: received "<<rc<<" bytes of data!");
+			m_ReadBuffer.sendOutput(tmp, rc);
+			//BIO_write(this->read_buf, tmp, rc);
 		} else if(rc == 0){
-			LOG(1,"TCP: disconnected from "<<url.url());
+			LOG(3,"TCP: disconnected from "<<url.url());
 			::close(this->socket);
 			this->state = CON_STATE_DISCONNECTED;
 		}
@@ -211,21 +214,13 @@ void TCPNode::run(){
 }
 
 void TCPNode::close(){
-	char tmp[SOCKET_BUF_SIZE];
-	int rc;
-	
 	this->state = CON_STATE_DISCONNECTED;
 	
-	while(!BIO_eof(this->write_buf)){
-		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			::send(this->socket, tmp, rc, MSG_NOSIGNAL);
-		}
-	}
 	::close(this->socket);
 	LOG(1,"TCP: disconnected!");
 }
 
-TCPNode::TCPNode(Network *net):Node(net){
+TCPNode::TCPNode(weak_ptr<Network> net):Node(net){
 	this->type = NODE_TCP;
 }
 

@@ -8,7 +8,7 @@ ifndef arch
    arch = IA32
 endif
 
-CCFLAGS = -Wall -D$(os) -I../udt/ -finline-functions -fstack-check -fstack-protector-all -O0 -g3 -ggdb3
+CCFLAGS = -Wall -std=gnu++0x -D$(os) -I../udt/ -finline-functions -fstack-check -fstack-protector-all -O0 -g3 -ggdb3
 
 ifeq ($(arch), IA32)
    CCFLAGS += -DIA32 #-mcpu=pentiumpro -march=pentiumpro -mmmx -msse
@@ -38,13 +38,17 @@ endif
 
 DIR = $(shell pwd)
 LIB = libvsocket.a
+OBJECTS = buffer.o if.o db.o node.o socks.o mem.o vsl.o ssl.o tcp.o udt.o net.o vsocket.o adapter.o url.o channel.o
 
 all: $(LIB)
 
-%.o: %.cpp *.h
+%.h.gch: %.h *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-$(LIB): if.o db.o node.o socks.o mem.o vsl.o ssl.o tcp.o udt.o net.o vsocket.o adapter.o url.o channel.o
+%.o: %.cpp *.h
+	$(C++) $(CCFLAGS) $< -g -c 
+
+$(LIB): local.h.gch $(OBJECTS)
 	ar rc $@ $^ 
 	
 clean:

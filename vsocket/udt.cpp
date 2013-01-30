@@ -13,7 +13,7 @@ Implementation of a normal UDT connection. Does not support any commands or pack
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Node *UDTNode::accept(){
+unique_ptr<Node> UDTNode::accept(){
 	UDTSOCKET recver;
 	sockaddr_storage clientaddr;
 	int addrlen = sizeof(clientaddr);
@@ -24,10 +24,10 @@ Node *UDTNode::accept(){
 		if(recver == UDT::INVALID_SOCK)
 		{
 			 cout << "accept: " << UDT::getlasterror().getErrorMessage() << endl;
-			 return 0;
+			 return unique_ptr<Node>();
 		}
 		
-		UDTNode *conn = new UDTNode(m_pNetwork);
+		unique_ptr<UDTNode> conn(new UDTNode(m_pNetwork));
 		char clientservice[NI_MAXSERV];
 		char host[NI_MAXHOST];
 		
@@ -38,9 +38,9 @@ Node *UDTNode::accept(){
 		//LOG(1,"[udt] accepted new connection!");
 		conn->state = CON_STATE_ESTABLISHED;
 		
-		return conn;
+		return move(conn);
 	}
-	return 0;
+	return unique_ptr<Node>();
 }
 
 int UDTNode::connect(const URL &url){
@@ -116,12 +116,20 @@ int UDTNode::connect(const URL &url){
 	return 1;
 }
 
-int UDTNode::send(const char *data, size_t size, size_t minsize){
-	return BIO_write(this->write_buf, data, size);
+int UDTNode::send(const char *data, size_t size){
+	int rc; 
+	if((rc = UDT::send(this->socket, data, size, MSG_NOSIGNAL))>0){
+		LOG(3,"UDT: sent "<<rc<<" bytes of data to UDT socket "<<url.url());
+	}
+	return rc;
 }
-int UDTNode::recv(char *data, size_t size, size_t minsize){
-	if(BIO_ctrl_pending(read_buf) < minsize) return 0;
-	return BIO_read(this->read_buf, data, size);
+int UDTNode::recv(char *data, size_t size, size_t minsize) const{
+	if(!m_ReadBuffer.input_pending() || m_ReadBuffer.input_pending() < minsize)  return 0;
+	int rc = m_ReadBuffer.recv(data, size, minsize);
+	LOG(3,"UDT: received "<<rc<<" bytes of data from UDT socket "<<url.url());
+	return rc;
+	//if(BIO_ctrl_pending(read_buf) < minsize) return 0;
+	//return BIO_read(this->read_buf, data, size);
 }
 
 void UDTNode::run(){
@@ -148,15 +156,10 @@ void UDTNode::run(){
 	
 	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
-		while(!BIO_eof(this->write_buf)){
-			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				//LOG(1,"UDT: sending "<<rc<<" bytes of data!");
-				UDT::send(this->socket, tmp, rc, 0);
-			}
-		}
 		if((rc = UDT::recv(this->socket, tmp, sizeof(tmp), 0))>0){
+			m_ReadBuffer.sendOutput(tmp, rc);
 			//LOG(1,"UDT: received "<<rc<<" bytes of data!");
-			BIO_write(this->read_buf, tmp, rc);
+			//BIO_write(this->read_buf, tmp, rc);
 		}
 		// if disconnected
 		if(UDT::getsockstate(this->socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
@@ -218,30 +221,21 @@ int UDTNode::listen(const URL &url){
 }
 
 void UDTNode::close(){
-	char tmp[SOCKET_BUF_SIZE];
-	int rc;
-	
 	this->state = CON_STATE_DISCONNECTED;
-	
-	while(!BIO_eof(this->write_buf)){
-		if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-			UDT::send(this->socket, tmp, rc, 0);
-		}
-	}
 	
 	if(this->socket)
 		UDT::close(this->socket);
 	
-	//LOG(1,"UDT: disconnected!");
+	LOG(3,"UDT: disconnected!");
 }
 
-UDTNode::UDTNode(Network *net):Node(net){
+UDTNode::UDTNode(weak_ptr<Network> net):Node(net){
 	this->type = NODE_UDT;
 	this->socket = 0;
 }
 
 UDTNode::~UDTNode(){
-	//LOG(1,"UDT: deleting "<<url.url());
+	LOG(3,"UDT: deleting "<<url.url());
 	
 	if(!(this->state & CON_STATE_DISCONNECTED))
 		this->close();

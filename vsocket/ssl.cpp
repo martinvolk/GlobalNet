@@ -30,7 +30,7 @@ string hexencode(const char *data, size_t size){
 }
 /*
 void con_show_certs(Connection *c){   
-	SSL* ssl = c->ssl;
+	SSL* ssl = c->m_pSSL;
 	X509 *cert;
 	char *line;
 
@@ -66,44 +66,45 @@ static void _init_ssl_ctx(SSL_CTX *ctx, const char* cert, const char *key){
 
 void SSLNode::_init_ssl_socket(bool server_socket){
 	SSLNode *sock = this;
+	this->read_buf = BIO_new(BIO_s_mem());
+	this->write_buf = BIO_new(BIO_s_mem());
+	BIO_set_mem_eof_return(this->read_buf, -1);
+	BIO_set_mem_eof_return(this->write_buf, -1);
+	
 	if(server_socket){
-		sock->ctx = SSL_CTX_new (SSLv3_server_method ());
-		_init_ssl_ctx(sock->ctx, SERVER_CERT, SERVER_KEY);
-		sock->ssl = SSL_new (sock->ctx);
-		SSL_set_bio(sock->ssl, sock->read_buf, sock->write_buf);
+		sock->m_pCTX = SSL_CTX_new (SSLv3_server_method ());
+		_init_ssl_ctx(sock->m_pCTX, SERVER_CERT, SERVER_KEY);
+		sock->m_pSSL = SSL_new (sock->m_pCTX);
+		SSL_set_bio(sock->m_pSSL, sock->read_buf, sock->write_buf);
 	} else {
-		sock->ctx = SSL_CTX_new (SSLv3_client_method ());
-		_init_ssl_ctx(sock->ctx, CLIENT_CERT, CLIENT_KEY);
-		sock->ssl = SSL_new (sock->ctx);
-		SSL_set_bio(sock->ssl, sock->read_buf, sock->write_buf);
+		sock->m_pCTX = SSL_CTX_new (SSLv3_client_method ());
+		_init_ssl_ctx(sock->m_pCTX, CLIENT_CERT, CLIENT_KEY);
+		sock->m_pSSL = SSL_new (sock->m_pCTX);
+		SSL_set_bio(sock->m_pSSL, sock->read_buf, sock->write_buf);
 	}
 	sock->server_socket = server_socket;
 }
 
 void SSLNode::_close_ssl_socket(){
-	if(this->ssl){
-		SSL_shutdown(this->ssl);
-		SSL_free(this->ssl);
-		if(this->ctx)
-			SSL_CTX_free(this->ctx);
-		// restore bios because we are using them in other places and ssl retardedly frees them. 
-		this->read_buf = BIO_new(BIO_s_mem());
-		this->write_buf = BIO_new(BIO_s_mem());
-		BIO_set_mem_eof_return(this->read_buf, -1);
-		BIO_set_mem_eof_return(this->write_buf, -1);
+	if(this->m_pSSL){
+		SSL_shutdown(this->m_pSSL);
+		SSL_free(this->m_pSSL);
+		if(this->m_pCTX)
+			SSL_CTX_free(this->m_pCTX);
 	}
-	this->ssl = 0;
-	this->ctx = 0;
+	this->read_buf = this->write_buf = 0;
+	this->m_pSSL = 0;
+	this->m_pCTX = 0;
 }
 
 void SSLNode::do_handshake(SocketType type){
 	if(type == SOCK_CLIENT){
 		if(server_socket) _close_ssl_socket();
-		if(!ssl) _init_ssl_socket(false);
+		if(!m_pSSL) _init_ssl_socket(false);
 	}
 	else if(type == SOCK_SERVER){
 		if(!server_socket) _close_ssl_socket();
-		if(!ssl) _init_ssl_socket(true);
+		if(!m_pSSL) _init_ssl_socket(true);
 	}
 	else{
 		ERROR("SSL: UNSUPPORTED SOCKET TYPE!");
@@ -112,13 +113,15 @@ void SSLNode::do_handshake(SocketType type){
 	state = CON_STATE_SSL_HANDSHAKE; 
 }
 
-int SSLNode::recv(char *data, size_t size, size_t minsize){
-	if(BIO_ctrl_pending(this->in_read) < minsize) return 0;
-	return BIO_read(this->in_read, data, size);
+int SSLNode::recv(char *data, size_t size, size_t minsize) const{
+	if((size_t)SSL_pending(this->m_pSSL) < minsize) return 0;
+	int rc = SSL_read(this->m_pSSL, data, size);
+	LOG(3, "SSL: decrypted "<<rc<<" bytes of data.");
+	return rc;
 }
 
-int SSLNode::send(const char *data, size_t size, size_t minsize){
-	return BIO_write(this->in_write, data, size);
+int SSLNode::send(const char *data, size_t size){
+	return m_SendBuffer.send(data, size);
 }
 
 int SSLNode::connect(const URL &url){
@@ -129,39 +132,26 @@ int SSLNode::connect(const URL &url){
 		return -1;
 	}
 	timer = milliseconds();
-	if(this->_output){
-		// initialize ssl client method 
-		_init_ssl_socket(false);
-		
-		this->_output->connect(url);
-		return 1;
-	}
-	return -1;
+	
+	// initialize ssl client method 
+	_init_ssl_socket(false);
+	m_pTransportLayer->connect(url);
+	
+	return 1;
 }
 
-Node *SSLNode::accept(){
+unique_ptr<Node> SSLNode::accept(){
 	// the accept call is meaningless to SSL node itthis-> 
 	// but if there is a connection from downline then we gladly serve it. 
-	if(this->_output){
-		Node *peer = this->_output->accept();
-		if(peer){
-			SSLNode *con = new SSLNode(m_pNetwork);
-			
-			con->_init_ssl_socket(true);
-			
-			con->url = peer->url;
-			
-			con->_output = peer;
-			
-			// the state now needs to be handshake because the connection 
-			// is already assumed to be established. 
-			// (now done in main loop)
-			//con->state = CON_STATE_INITIALIZED;
-			
-			return con;
-		}
+	unique_ptr<Node> peer = m_pTransportLayer->accept();
+	if(peer){
+		unique_ptr<SSLNode> con(new SSLNode(m_pNetwork, move(peer), SOCK_SERVER));
+		
+		con->_init_ssl_socket(true);
+	
+		return move(con);
 	}
-	return 0;
+	return unique_ptr<Node>();
 }
 
 int SSLNode::listen(const URL &url){
@@ -170,61 +160,92 @@ int SSLNode::listen(const URL &url){
 		return -1;
 	}
 	
-	if(this->_output){
-		if(this->_output->listen(url)>0){
-			_init_ssl_socket(true);
-			this->url = this->_output->url;
-			return 1;
-		}
+	if(m_pTransportLayer->listen(url)>0){
+		_init_ssl_socket(true);
+		this->url = m_pTransportLayer->url;
+		return 1;
 	}
 	return -1;
 }
 
+size_t SSLNode::input_pending() const{
+	return SSL_pending(m_pSSL);
+}
+
+size_t SSLNode::output_pending() const{
+	return BIO_ctrl_pending(write_buf);
+}
+
 void SSLNode::run(){
-	char tmp[SOCKET_BUF_SIZE];
-	int rc = 0;
 	
-	if(!this->_output){
-		LOG(1,"[warning] no backend set for the SSL connection!");
-		return;
+	//if(m_bProcessingMainLoop) return;
+	//SETFLAG(m_bProcessingMainLoop, 0);
+	
+	if(state & CON_STATE_WAIT_CLOSE){
+		
+		m_pTransportLayer->close();
+		this->state = CON_STATE_DISCONNECTED;
+		
+		LOG(1,"SSL: disconnected!");
 	}
 	
-	if(m_bProcessingMainLoop) return;
-	SETFLAG(m_bProcessingMainLoop, 0);
+	m_pTransportLayer->run();
 	
-	this->_output->run();
-		
 	// if we are waiting for connection and the downline has changed it's state
 	// to being connected, we can now switch to handshake mode and do the handshake. 
-	if((this->state & CON_STATE_INITIALIZED) && this->ssl && this->ctx && (this->_output->state & CON_STATE_CONNECTED)){
+	if((this->state & CON_STATE_INITIALIZED) && this->m_pSSL && this->m_pCTX && (m_pTransportLayer->state & CON_STATE_CONNECTED)){
 		// switch into handshake mode
-		this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
+		this->url = URL("ssl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
 		
 		this->timer = milliseconds();
 		this->state = CON_STATE_SSL_HANDSHAKE; 
 		LOG(1,"SSL: initializing handshake..");
 	}
-	if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_DISCONNECTED){
+	if(this->state & CON_STATE_CONNECTED && m_pTransportLayer->state & CON_STATE_DISCONNECTED){
 		this->state = CON_STATE_DISCONNECTED; 
 	}
 	
 	// send / receive data between internal buffers and output 
 	// but only if the connection is still valid. 
 	if(!(this->state & CON_STATE_INVALID)){
-		/// send/receive output data
-		if(this->_output ){
-			this->_output->run();
+		int rc;
+		char tmp[SOCKET_BUF_SIZE];
+		
+		while(!BIO_eof(this->write_buf)){
+			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
+				LOG(3,"SSL: "<<this->url.url()<<" sending "<<rc<<" bytes of encrypted data.");
+				m_pTransportLayer->send(tmp, rc);
+			}
+		}
+		
+		if((rc = m_pTransportLayer->recv(tmp, SOCKET_BUF_SIZE))>0){
+			LOG(3,"SSL: "<<this->url.url()<<" received "<<rc<<" bytes of encrypted data.");
+			BIO_write(this->read_buf, tmp, rc);
+		}
+	}
+	
+	if(this->state & CON_STATE_CONNECTED){
+		int rc; 
+		char tmp[SOCKET_BUF_SIZE]; 
+		if((rc = m_SendBuffer.recvOutput(tmp, SOCKET_BUF_SIZE, 0))>0){
+			rc = SSL_write(this->m_pSSL, tmp, rc);
+			LOG(3, "SSL: encrypting "<<rc<<" bytes of data.");
+		}
+		//(*this)>>m_pTransportLayer.get();
+		//(*this)<<m_pTransportLayer.get();
+		/* instead of this.. ;-) 
+		if(out){
 			while(!BIO_eof(this->write_buf)){
 				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
 					LOG(3,"SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
-					this->_output->send(tmp, rc);
+					out->send(tmp, rc);
 				}
 			}
-			if((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
+			if((rc = out->recv(tmp, SOCKET_BUF_SIZE))>0){
 				LOG(3,"SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
 				BIO_write(this->read_buf, tmp, rc);
 			}
-		}
+		}*/
 	}
 	
 	// check if the async handshake is completed
@@ -242,9 +263,9 @@ void SSLNode::run(){
 		}
 		if(this->server_socket == false){
 			//LOG(1,"SSL: Attempting to connect to "<<url.url());
-			if((res = SSL_connect(this->ssl))>0){
+			if((res = SSL_connect(this->m_pSSL))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
+				this->url = URL("ssl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
 				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
@@ -253,9 +274,9 @@ void SSLNode::run(){
 		}
 		else {
 			//LOG(1,"SSL: accepting ssl connections on "<<url.url());
-			if((res=SSL_accept(this->ssl))>0){
+			if((res=SSL_accept(this->m_pSSL))>0){
 				this->state = CON_STATE_ESTABLISHED;
-				this->url = URL("ssl", this->_output->url.host(), this->_output->url.port());
+				this->url = URL("ssl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
 				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
@@ -264,77 +285,44 @@ void SSLNode::run(){
 		}
 	} 
 	
-	// if the connection has been established then we can write our input data
-	// to ssl and encode it. 
-	if(this->state & CON_STATE_CONNECTED){
-		if((rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE))>0){
-			if((rc = SSL_write(this->ssl, tmp, rc))<=0){
-				LOG(1,"error sending ssl to "<<url.url()<<": "<<errorstring(SSL_get_error(this->ssl, rc)));
-				ERR_SSL(rc);
-			}
-			
-			if(rc>0){
-				//LOG(1,"[SSL] send: "<<url.url()<<" length: "<<rc<<" ");
-				//LOG(1,hexencode(tmp, rc));
-			}
-		}
-		if((rc = SSL_read(this->ssl, tmp, SOCKET_BUF_SIZE))>0){
-			//LOG(1,"[SSL] recv: "<<url.url()<<" length: "<<rc<<" ");
-			BIO_write(this->in_read, tmp, rc);
-			
-			//LOG(1,hexencode(tmp, rc));
-		}
-	}
-	
 	// we always should check whether the output has closed so that we can graciously 
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
-	if(this->_output && this->_output->state & CON_STATE_DISCONNECTED){
+	if(m_pTransportLayer->state & CON_STATE_DISCONNECTED){
 		//LOG(1,"SSL: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }
 
 void SSLNode::close(){
-	if(!this->_output){
-		this->state = CON_STATE_DISCONNECTED;
-		return;
-	}
-	// send unsent data 
-	while(!BIO_eof(this->in_write)){
-		char tmp[SOCKET_BUF_SIZE];
-		int rc = BIO_read(this->in_write, tmp, SOCKET_BUF_SIZE);
-		int rs;
-		if((rs = SSL_write(this->ssl, tmp, rc))>0){
-			while(!BIO_eof(this->write_buf)){
-				char tmp[SOCKET_BUF_SIZE];
-				int rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE);
-				if(this->_output)
-					this->_output->send(tmp, rc);
-			}
-		}
-	}
-	if(this->_output)
-		this->_output->close();
 	this->state = CON_STATE_WAIT_CLOSE;
-	
-	LOG(1,"SSL: disconnected!");
 }
-SSLNode::SSLNode(Network *net):Node(net){
+/*
+SSLNode::SSLNode(weak_ptr<Network> net, unique_ptr<Node> out):Node(net){
 	this->state = CON_STATE_INITIALIZED;
 	
-	this->ssl = 0;
-	this->ctx = 0;
+	this->m_pSSL = 0;
+	this->m_pCTX = 0;
+	
+	m_pTransportLayer = move(out);
+	
+	this->read_buf = this->write_buf = 0;
 	
 	this->type = NODE_SSL;
 }
-
-SSLNode::SSLNode(Network *net, SocketType type):Node(net){
+*/
+SSLNode::SSLNode(weak_ptr<Network> net, unique_ptr<Node> out, SocketType type):Node(net){
 	this->state = CON_STATE_INITIALIZED;
-	this->ssl = 0;
-	this->ctx = 0;
+	this->m_pSSL = 0;
+	this->m_pCTX = 0;
 	this->type = NODE_SSL;
+	this->url = out->url;
+	
 	server_socket = false;
+	
+	m_pTransportLayer = move(out);
+	
+	this->read_buf = this->write_buf = 0;
 	
 	if(type == SOCK_SERVER){
 		_init_ssl_socket(true);
@@ -354,3 +342,31 @@ SSLNode::~SSLNode(){
 	
 	LOG(3,"SSL: deleted "<<url.url());
 }
+
+/// for sending out encrypted data
+/*
+const SSLNode &operator>>(const SSLNode &self, Node *other){
+	int rc;
+	char tmp[SOCKET_BUF_SIZE];
+	
+	while(!BIO_eof(self.write_buf)){
+		if((rc = BIO_read(self.write_buf, tmp, SOCKET_BUF_SIZE))>0){
+			LOG(3,"SSL: "<<self.url.url()<<" sending "<<rc<<" bytes of encrypted data.");
+			other->send(tmp, rc);
+		}
+	}
+	return self;
+}
+
+/// for inputting encrypted data
+SSLNode &operator<<(SSLNode &self, Node* other){
+	int rc;
+	char tmp[SOCKET_BUF_SIZE];
+	
+	if((rc = other->recv(tmp, SOCKET_BUF_SIZE))>0){
+		LOG(3,"SSL: "<<self.url.url()<<" received "<<rc<<" bytes of encrypted data.");
+		BIO_write(self.read_buf, tmp, rc);
+	}
+	return self;
+}
+*/

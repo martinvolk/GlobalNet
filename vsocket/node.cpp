@@ -7,12 +7,9 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
-Node::Node(Network *net){
+Node::Node(weak_ptr<Network> net){
 	m_pNetwork = net;
-	this->_output = 0;
-	this->_input = 0;
 	this->type = NODE_NONE;
-	this->m_iRefCount = 1;
 	
 	/* set up the memory-buffer BIOs */
 	/*this->read_buf = BIO_new(BIO_s_mem());
@@ -25,7 +22,6 @@ Node::Node(Network *net){
 	BIO_set_mem_eof_return(this->in_read, -1);
 	BIO_set_mem_eof_return(this->in_write, -1);
 	*/
-	m_bProcessingMainLoop = false;
 	this->state = CON_STATE_INITIALIZED;
 }
 
@@ -61,15 +57,14 @@ void Node::close(){
 	
 	read_buf = write_buf = in_read = in_write = 0;
 	*/
-	this->_output = 0;
-	this->_input = 0;
+	//m_pTransportLayer.reset();
 }
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Node * Node::accept(){
+unique_ptr<Node> Node::accept(){
 	ERROR("CON_accept not implemented!");
-	return 0;
+	return unique_ptr<Node>();
 }
 
 int Node::connect(const URL &url){
@@ -77,30 +72,22 @@ int Node::connect(const URL &url){
 	return -1;
 }
 
-int Node::send(const char *data, size_t size, size_t minsize){
-	ERROR("CON_send not implemented!");
-	return -1;
-}
-int Node::recv(char *data, size_t size, size_t minsize){
-	ERROR("CON_recv not implemented!");
-	return -1;
-}
-
-
+/*
 int Node::sendCommand(NodeMessage msg, const char *data, size_t size, const string &tag){
 	// the default behavior is to simply pass the command down the line
-	if(this->_output)
-		this->_output->sendCommand(msg, data, size, tag);
+	if(this->m_pTransportLayer)
+		this->m_pTransportLayer->sendCommand(msg, data, size, tag);
 	return 1;
 }
 
 int Node::sendCommand(const Packet &pack){
 	// the default behavior is to simply pass the command down the line
-	if(this->_output)
-		this->_output->sendCommand(pack);
+	if(this->m_pTransportLayer)
+		this->m_pTransportLayer->sendCommand(pack);
 	//this->sendCommand((NodeMessage)pack.cmd.code, pack.data, pack.cmd.size, pack.cmd.hash.hex());
 	return 1;
 }
+*/
 /*
 int Node::recvCommand(Packet *dst){
 	// only used by Peer. 
@@ -109,8 +96,7 @@ int Node::recvCommand(Packet *dst){
 }
 */
 void Node::run(){
-	if(_output)
-		_output->run();
+	//m_pTransportLayer->run();
 }
 int Node::listen(const URL &url){
 	ERROR("CON_listen not implemented!");
@@ -119,24 +105,25 @@ int Node::listen(const URL &url){
 void Node::peg(Node *other){
 	ERROR("CON_bridge not implemented!");
 }
-
-void Node::set_output(Node *other){
-	if(this->_output) delete _output;
-	this->_output = other;
+/*
+void Node::output(shared_ptr<Node> other){
+	m_pTransportLayer.reset();
+	this->m_pTransportLayer = other;
 	if(other)
-		other->set_input(this);
+		other->input(shared_ptr<Node>(this));
 }
-void Node::set_input(Node *other){ 
-	this->_input = other;
-	//other->set_output(this);
+void Node::input(shared_ptr<Node> other){ 
+	//this->m_pInput = other;
+	//other->setOutput(this);
 }
-Node* Node::get_output(){
-	return this->_output;
+shared_ptr<Node> Node::output(){
+	return this->m_pTransportLayer.lock();
 }
-Node* Node::get_input(){
-	return this->_input;
+shared_ptr<Node> Node::input(){
+	//return this->m_pInput;
+	return shared_ptr<Node>();
 }
-
+*/
 void Node::set_option(const string &opt, const string &val){
 	options[opt] = val;
 }

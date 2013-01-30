@@ -56,7 +56,7 @@ int LinkNode::connect(const URL &url){
 			this->_output->sendCommand(RELAY_CONNECT, url.host().c_str(), url.host().length());
 			
 			this->_output->_input = peer;
-			peer->set_output(this->_output);
+			peer->setOutput(this->_output);
 			this->_output = peer;
 		} else {
 			this->_output = peer;
@@ -154,7 +154,7 @@ void LinkNode::close(){
 	this->_output->close();
 }
 
-LinkNode::LinkNode(Network *net):Node(net){ 
+LinkNode::LinkNode(shared_ptr<Network> net):Node(net){ 
 	this->type = NODE_LINK;
 	this->state = CON_STATE_INITIALIZED;
 }
