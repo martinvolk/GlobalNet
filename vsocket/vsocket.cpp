@@ -209,7 +209,7 @@ namespace VSL{
 		LOCK(mu,0);
 		map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.find(sock);
 		if(it != sockets.end()){
-			if((*it).second != 0){
+			if((*it).second){
 				(*it).second->close();
 				(*it).second.reset();
 			}
