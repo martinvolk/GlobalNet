@@ -309,7 +309,7 @@ void Network::run() {
 			if(pack.cmd.code == RELAY_CONNECT){
 				LOG(3, "NET: RELAY_CONNECT from "<<(*it)->url.url());
 				// create a bridge that will manage the channel for us from now on
-				unique_ptr<Node> con = this->connect(URL(pack.data.data()));
+				unique_ptr<Node> con = this->connect(URL(string(pack.data.begin(), pack.data.end())));
 				if(con){
 					// now we need to set up chan <- adapter -> con
 					unique_ptr<BridgeNode> bridge(new BridgeNode(shared_from_this(), move(*it), move(con)));

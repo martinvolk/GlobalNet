@@ -146,11 +146,11 @@ void SocksService::run(){
 		} 
 		
 		if((rs = VSL::recv(sock, buf, SOCKET_BUF_SIZE)) > 0){
-			LOG(1,"SOCKS: sending "<<rs<<" bytes to link.");
+			LOG(3,"SOCKS: sending "<<rs<<" bytes to link.");
 			VSL::send(link, buf, rs);
 		} 
 		if((rs = VSL::recv(link, buf, SOCKET_BUF_SIZE))>0){
-			LOG(1,"SOCKS: sending "<<rs<<" bytes to socks connection!");
+			LOG(3,"SOCKS: sending "<<rs<<" bytes to socks connection!");
 			if((VSL::send(sock, buf, rs))<0){
 				
 			}

@@ -277,6 +277,11 @@ void VSLNode::run(){
 		else {
 			if(m_pTransportLayer->input_pending() >= m_CurrentPacket.cmd.size){
 				m_CurrentPacket.data.resize(m_CurrentPacket.cmd.size);
+				if(m_CurrentPacket.data.size() != m_CurrentPacket.cmd.size){
+					ERROR("ALLOCATION ERROR!");
+					close();
+					return;
+				}
 				m_pTransportLayer->recv(m_CurrentPacket.data.data(), m_CurrentPacket.cmd.size);
 				
 				// pass the packet to the channel

@@ -24,6 +24,10 @@ int TCPNode::connect(const URL &url){
 	struct hostent *hp;
 	int s;
 	
+	if(url.port() != 80 && url.port() != 443){
+		LOG(3, "Here!");
+	}
+	
 	hp = gethostbyname(url.host().c_str());
 	if (hp == NULL) {
 		fprintf(stderr, "%s: unknown host\n", url.host().c_str());
@@ -182,7 +186,7 @@ void TCPNode::run(){
 			LOG(1,"TCP: successfully connected to "<<url.url());
 			state = CON_STATE_ESTABLISHED; 
 		} else {
-			LOG(1,"TCP: connection failed to "<<url.url());
+			ERROR("TCP: connection failed to "<<url.url());
 			::close(socket);
 			state = CON_STATE_DISCONNECTED;
 		}
