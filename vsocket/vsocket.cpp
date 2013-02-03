@@ -9,7 +9,8 @@ Free software. Part of the GlobalNet project.
 #include "local.h"
 #include <math.h>
 
-#define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; VSL::send(sock, ss.str().c_str(), ss.str().length());}
+#define SEND_SOCK(sock, msg) { stringstream ss; ss<<msg<<endl; Node *con = _find_socket(socket); \
+	if(con) con->send(ss.str().c_str(), ss.str().length());}
 
 string con_state_to_string(int state){
 	switch(state){
@@ -254,6 +255,15 @@ namespace VSL{
 			np++;
 		}
 		SEND_SOCK(socket, "Total: "<<np<<" peers.");
+		np =0;
+		for(map<VSOCKET, Node*>::iterator it = sockets.begin();
+				it != sockets.end(); it++ ){
+			Node *peer = (*it).second;
+			SEND_SOCK(socket, "socket: " << peer->url.url()<<" state: "<<con_state_to_string(peer->state));
+			np++;
+		}
+		SEND_SOCK(socket, "Total: "<<np<<" peers.");
+		
 	}
 	
 	string to_string(int value){

@@ -33,12 +33,17 @@ VSLNode::VSLNode(weak_ptr<Network> net, unique_ptr<Node> out):Node(net){
 VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
+<<<<<<< HEAD
 	close(); //?? safe?
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){
 		(*it).second->detach();
 	}
 	/* No more need to do this with weak ptr :)
+=======
+	//close(); //?? safe?
+	
+>>>>>>> master
 	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){
@@ -46,7 +51,8 @@ VSLNode::~VSLNode(){
 	}
 	for(list<Channel*>::iterator it = chans.begin(); 
 			it != chans.end(); it++){
-		(*it)->m_extLink = 0;
+		//(*it)->m_extLink = 0;
+		//sendCommand(CMD_CHAN_CLOSE, "", 0, (*it)->id());
 		releaseChannel(*it);
 	}*/
 	m_Channels.clear();
