@@ -857,7 +857,7 @@ and uses this object as a way to gather output data form another node
 **/
 class MemoryNode : public Node{
 public:
-	MemoryNode(weak_ptr<Network> net, shared_ptr<BufferInterface> buffer = 0);
+	MemoryNode(weak_ptr<Network> net, shared_ptr<BufferInterface> buffer = shared_ptr<BufferInterface>());
 	virtual ~MemoryNode();
 	
 	int sendOutput(const char *data, size_t size);
