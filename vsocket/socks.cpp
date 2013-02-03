@@ -46,7 +46,7 @@ unique_ptr<Node> SocksNode::accept(){
 }
 void SocksNode::run(){
 	unique_ptr<Node> client; 
-	if((client = listen_socket->accept()) != 0){
+	if((client = listen_socket->accept())){
 		// push the client into the queue of socks nodes
 		LOG(1,"SocksNode: accepted connection from "<<client->url.url());
 		socks_state_t state; 
