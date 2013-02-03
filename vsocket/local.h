@@ -594,7 +594,7 @@ public:
 	virtual void run();
 	virtual void close();
 private:
-	Buffer m_ReadBuffer;
+	Buffer m_Buffer;
 	int socket;
 	struct sockaddr_in _socket_addr;
 };
