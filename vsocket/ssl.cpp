@@ -213,7 +213,7 @@ void SSLNode::run(){
 		}
 		
 		if((rc = m_pTransportLayer->recv(tmp, SOCKET_BUF_SIZE))>0){
-			LOG(3,"SSL: "<<this->url.url()<<" received "<<rc<<" bytes of encrypted data. "<<hexencode(tmp, rc));
+			LOG(3,"SSL: "<<this->url.url()<<" received "<<rc<<" bytes of encrypted data. ");
 			BIO_write(this->read_buf, tmp, rc);
 		}
 	}
@@ -222,12 +222,12 @@ void SSLNode::run(){
 		int rc; 
 		char tmp[SOCKET_BUF_SIZE]; 
 		if((rc = SSL_read(m_pSSL, tmp, SOCKET_BUF_SIZE))>0){
-			LOG(3, "SSL: "<<url.url()<<" decrypted data "<<rc<<" bytes: "<<hexencode(tmp, rc));
+			LOG(3, "SSL: "<<url.url()<<" decrypted data "<<rc<<" bytes.");
 			m_DataBuffer.sendOutput(tmp, rc);
 		}
 		if((rc = m_DataBuffer.recvOutput(tmp, SOCKET_BUF_SIZE, 0))>0){
 			rc = SSL_write(this->m_pSSL, tmp, rc);
-			LOG(3, "SSL: "<<url.url()<<" encrypting "<<rc<<" bytes of data: "<<hexencode(tmp, rc));
+			LOG(3, "SSL: "<<url.url()<<" encrypting "<<rc<<" bytes.");
 		}
 	}
 	

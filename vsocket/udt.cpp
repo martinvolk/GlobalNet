@@ -164,6 +164,7 @@ void UDTNode::run(){
 			}
 			else{
 				ERROR("UDT: could not send "<<rc<<" bytes of data to UDT socket "<<url.url());
+				close();
 			}
 		}
 		// if disconnected

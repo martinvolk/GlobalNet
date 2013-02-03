@@ -39,6 +39,10 @@ VSLNode::~VSLNode(){
 		(*it).second->detach();
 	}
 	/* No more need to do this with weak ptr :)
+=======
+	//close(); //?? safe?
+	
+>>>>>>> master
 	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
 			it != m_Channels.end(); it++){
@@ -46,7 +50,8 @@ VSLNode::~VSLNode(){
 	}
 	for(list<Channel*>::iterator it = chans.begin(); 
 			it != chans.end(); it++){
-		(*it)->m_extLink = 0;
+		//(*it)->m_extLink = 0;
+		//sendCommand(CMD_CHAN_CLOSE, "", 0, (*it)->id());
 		releaseChannel(*it);
 	}*/
 	m_Channels.clear();
@@ -175,7 +180,10 @@ int VSLNode::sendCommand(const Packet &pack){
 	vector<char> tmp(sizeof(PacketHeader)+pack.data.size());
 	std::copy((char*)&cmd, ((char*)&cmd) + sizeof(PacketHeader), tmp.begin());
 	std::copy(pack.data.begin(), pack.data.end(), tmp.begin()+sizeof(PacketHeader));
-	m_pTransportLayer->send(tmp.data(), tmp.size());
+	if(sizeof(PacketHeader)+pack.data.size() == tmp.size())
+		m_pTransportLayer->send(tmp.data(), tmp.size());
+	else 
+		ERROR("VSL: sendCommand: allocation error!");
 	return pack.size();
 }
 /*

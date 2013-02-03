@@ -87,7 +87,7 @@ void Channel::handlePacket(const Packet &pack){
 	else if(state & CON_STATE_CONNECTED){
 		if(pack.cmd.code == CMD_DATA){
 			LOG(2,"CHANNEL: DATA at "<<url.url()<<", "
-					<<pack.cmd.hash.hex()<<": "<<pack.data.size()<<" bytes: "<<hexencode(pack.data.data(), pack.data.size()));
+					<<pack.cmd.hash.hex()<<": "<<pack.data.size()<<" bytes.");
 			m_ReadBuffer.sendOutput(pack.data.data(), pack.data.size());
 			//BIO_write(read_buf, pack.data, pack.cmd.size);
 		}

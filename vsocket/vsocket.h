@@ -14,7 +14,7 @@ Free software. Part of the GlobalNet project.
 #include <vector>
 #include <list>
 
-#define LOGLEVEL 1
+#define LOGLEVEL 3
 
 class URL {
 public:

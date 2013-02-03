@@ -195,7 +195,7 @@ void TCPNode::run(){
 	}*/
 	if(this->state & CON_STATE_CONNECTED){
 		if((rc = ::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			LOG(3,"TCP: received "<<rc<<" bytes of data!");
+			LOG(2,"TCP: received "<<rc<<" bytes of data from "<<url.url());
 			m_Buffer.sendOutput(tmp, rc);
 			//BIO_write(this->read_buf, tmp, rc);
 		} 
@@ -211,7 +211,7 @@ void TCPNode::run(){
 		if((rc = m_Buffer.recvOutput(tmp, SOCKET_BUF_SIZE))>0){
 			int rs; 
 			if((rs = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))>0){
-				LOG(1,"TCP: sent "<<rc<<" bytes of data to TCP socket "<<url.url());
+				LOG(2,"TCP: sent "<<rc<<" bytes of data to TCP socket "<<url.url());
 			}
 		} 
 		
