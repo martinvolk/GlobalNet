@@ -46,21 +46,6 @@ void Channel::detach(){
 void Channel::close(){
 	LOG(3, "CHANNEL: cleaning up! "<<m_sHash); 	
 	
-<<<<<<< HEAD
-=======
-	if(m_extLink){
-		m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
-		m_extLink->releaseChannel(this);
-	}
-	
-	for(list<VSLNode*>::iterator it = m_Peers.begin(); 
-			it != m_Peers.end(); it++){
-		// prevent deletion of the target
-		if((*it)->get_output() == m_pTarget)
-			(*it)->set_output(0);
-	}
-	
->>>>>>> master
 	// relay is always created here. 
 	/*m_pRelay.reset();
 	m_pTarget.reset();
@@ -74,16 +59,11 @@ void Channel::close(){
 	m_Targets.clear();
 	*/
 	state = CON_STATE_DISCONNECTED;
-<<<<<<< HEAD
 
 	if(m_extLink){
 		m_extLink->sendCommand(CMD_CHAN_CLOSE, "", 0, m_sHash);
 		m_extLink->releaseChannel(m_sHash);
 	}
-=======
-	
-	
->>>>>>> master
 }
 
 void Channel::handlePacket(const Packet &pack){
@@ -127,47 +107,8 @@ void Channel::handlePacket(const Packet &pack){
 }
 
 int Channel::connect(const URL &url){
-<<<<<<< HEAD
 	ERROR("CHANNEL: connect not implemented!");
 	return -1;
-=======
-	Packet pack;
-	
-	if(!m_extLink || state & CON_STATE_DISCONNECTED)
-		return -1;
-		
-	// create a parallel channel and close ourselves. 
-	if(!m_pTarget){
-		m_pTarget = m_extLink->createChannel();
-		m_iRefCount++;
-		m_extLink->releaseChannel(this);
-	}
-	
-	LOG(2,"CHANNEL: sending RELAY_CONNECT to "<<m_pTarget->url.url());
-	pack.cmd.code = RELAY_CONNECT;
-	pack.cmd.hash.from_hex_string(m_sHash);
-	pack.cmd.size = url.url().length();
-	memcpy(pack.data, url.url().c_str(), url.url().length());
-	m_pTarget->sendCommand(pack);
-	
-	if(url.protocol().compare("vsl") == 0){
-		// put the remote channel into encryption mode and create a new 
-		// encryption node that will encrypt all the traffic. 
-		LOG(2,"CHANNEL: sending ENCRYPT_BEGIN to "<<m_pTarget->url.url());
-		m_pTarget->sendCommand(CMD_ENCRYPT_BEGIN, "", 0, "");
-		
-		VSLNode *node = new VSLNode(m_pNetwork);
-		node->set_output(m_pTarget);
-		node->do_handshake(SOCK_CLIENT);
-		m_Peers.push_back(node);
-		
-		// set the target for send()/recv() to a channel of the new node
-		m_pTarget = node->createChannel();
-		m_Targets.push_back(m_pTarget);
-	}
-	
-	return 1;
->>>>>>> master
 }
 
 int Channel::sendCommand(const Packet &pack){
