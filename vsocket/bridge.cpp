@@ -24,7 +24,7 @@ BridgeNode::~BridgeNode(){
 Establishes a UDT connection using listen_port as local end **/
 unique_ptr<Node> BridgeNode::accept(){
 	ERROR("CON_accept not implemented!");
-	return 0;
+	return unique_ptr<Node>();
 }
 
 int BridgeNode::connect(const URL &url){
