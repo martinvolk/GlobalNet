@@ -199,12 +199,6 @@ void TCPNode::run(){
 			m_Buffer.sendOutput(tmp, rc);
 			//BIO_write(this->read_buf, tmp, rc);
 		} 
-		else if((rc = m_Buffer.recvOutput(tmp, SOCKET_BUF_SIZE))>0){
-			int rs; 
-			if((rs = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))>0){
-				LOG(1,"TCP: sent "<<rc<<" bytes of data to TCP socket "<<url.url());
-			}
-		} 
 		else if(rc == 0){
 			LOG(3,"TCP: disconnected from "<<url.url());
 			::close(this->socket);
@@ -213,6 +207,14 @@ void TCPNode::run(){
 		else if(errno != ENOTCONN && errno != EWOULDBLOCK){
 			//perror("recv");
 		}
+		
+		if((rc = m_Buffer.recvOutput(tmp, SOCKET_BUF_SIZE))>0){
+			int rs; 
+			if((rs = ::send(this->socket, tmp, rc, MSG_NOSIGNAL))>0){
+				LOG(1,"TCP: sent "<<rc<<" bytes of data to TCP socket "<<url.url());
+			}
+		} 
+		
 	}
 }
 
