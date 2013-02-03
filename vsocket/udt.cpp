@@ -117,15 +117,11 @@ int UDTNode::connect(const URL &url){
 }
 
 int UDTNode::send(const char *data, size_t size){
-	int rc; 
-	if((rc = UDT::send(this->socket, data, size, MSG_NOSIGNAL))>0){
-		LOG(3,"UDT: sent "<<rc<<" bytes of data to UDT socket "<<url.url());
-	}
-	return rc;
+	return m_Buffer.send(data, size);
 }
 int UDTNode::recv(char *data, size_t size, size_t minsize) const{
-	if(!m_ReadBuffer.input_pending() || m_ReadBuffer.input_pending() < minsize)  return 0;
-	int rc = m_ReadBuffer.recv(data, size, minsize);
+	if(!m_Buffer.input_pending() || m_Buffer.input_pending() < minsize)  return 0;
+	int rc = m_Buffer.recv(data, size, minsize);
 	LOG(3,"UDT: received "<<rc<<" bytes of data from UDT socket "<<url.url());
 	return rc;
 	//if(BIO_ctrl_pending(read_buf) < minsize) return 0;
@@ -157,9 +153,18 @@ void UDTNode::run(){
 	if(this->state & CON_STATE_CONNECTED){
 		// send/recv data
 		if((rc = UDT::recv(this->socket, tmp, sizeof(tmp), 0))>0){
-			m_ReadBuffer.sendOutput(tmp, rc);
+			m_Buffer.sendOutput(tmp, rc);
 			//LOG(1,"UDT: received "<<rc<<" bytes of data!");
 			//BIO_write(this->read_buf, tmp, rc);
+		}
+		if((rc = m_Buffer.recvOutput(tmp, SOCKET_BUF_SIZE))>0){
+			int rs = 0;
+			if((rs = UDT::send(this->socket, tmp, rc, MSG_NOSIGNAL))>0){
+				LOG(3,"UDT: sent "<<rs<<" bytes of data to UDT socket "<<url.url());
+			}
+			else{
+				ERROR("UDT: could not send "<<rc<<" bytes of data to UDT socket "<<url.url());
+			}
 		}
 		// if disconnected
 		if(UDT::getsockstate(this->socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){

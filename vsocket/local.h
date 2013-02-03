@@ -619,7 +619,7 @@ public:
 	virtual void run();
 	virtual void close();
 private:
-	Buffer m_ReadBuffer;
+	Buffer m_Buffer;
 	UDTSOCKET socket;
 };
 
