@@ -377,9 +377,9 @@ void Network::run() {
 	if(this->last_peer_list_broadcast < time(0) - NET_PEER_LIST_INTERVAL){
 		LOG(1,endl<<"CONNECTIONS:");
 		
-		//LOG(1,"PEERS:");
+		LOG(1,"PEERS:");
 		for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
-			//LOG(1,(*it).first<<", state: "<<con_state_to_string((*it).second->state));
+			LOG(1,(*it).first<<", state: "<<con_state_to_string((*it).second->state));
 		}
 		for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
 			//LOG(1,"NET: sending peer list to the peer.");
