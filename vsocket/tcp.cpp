@@ -222,7 +222,7 @@ void TCPNode::close(){
 	this->state = CON_STATE_DISCONNECTED;
 	
 	::close(this->socket);
-	LOG(1,"TCP: disconnected!");
+	LOG(1,"TCP: disconnected from "<<url.url());
 }
 
 TCPNode::TCPNode(weak_ptr<Network> net):Node(net){

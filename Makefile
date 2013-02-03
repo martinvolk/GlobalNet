@@ -40,7 +40,7 @@ DIR = $(shell pwd)
 
 APP = gclient
 	
-all: 
+all: vsocket/libvsocket.a
 	make -C udt
 	make -C vsocket
 	rm -f gclient

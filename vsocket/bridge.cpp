@@ -85,7 +85,9 @@ int BridgeNode::listen(const URL &url){
 	return -1;
 }
 void BridgeNode::close(){
-	ERROR("CON_close not implemented!");
+	this->m_pNodeTwo->close();
+	this->m_pNodeOne->close();
+	this->state = CON_STATE_DISCONNECTED;
 }
 
 

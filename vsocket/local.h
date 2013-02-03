@@ -59,7 +59,6 @@ Free software. Part of the GlobalNet project.
 using namespace std;
 
 // loglevel 1-3 (3 = detailed)
-#define LOGLEVEL 3
 
 #define LOG(lev, msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<",\t"<<\
 				(unsigned int)pthread_self()<<"]\t"<<msg << endl; \

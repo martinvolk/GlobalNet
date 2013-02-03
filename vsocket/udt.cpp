@@ -230,7 +230,7 @@ void UDTNode::close(){
 	if(this->socket)
 		UDT::close(this->socket);
 	socket = 0;
-	LOG(3,"UDT: disconnected!");
+	LOG(1,"UDT: disconnected from "<<url.url());
 }
 
 UDTNode::UDTNode(weak_ptr<Network> net):Node(net){

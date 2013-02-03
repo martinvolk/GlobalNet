@@ -16,7 +16,7 @@ Free software. Part of the GlobalNet project.
    #include <cstdlib>
    #include <cstring>
    #include <netdb.h>
-  
+   
 #else
  #include <winsock2.h>
  #include <ws2tcpip.h>
@@ -42,7 +42,6 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-#define LOGLEVEL 3
 #define LOG(lev,msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
 
 #define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
