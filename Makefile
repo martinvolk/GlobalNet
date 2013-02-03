@@ -45,6 +45,9 @@ all: vsocket/libvsocket.a
 	make -C vsocket
 	rm -f gclient
 	make -C . $(APP)
+
+vsocket/libvsocket.a: 
+	make -C vsocket
 	
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
