@@ -97,38 +97,31 @@ void SSLNode::_close_ssl_socket(){
 	this->m_pCTX = 0;
 }
 
-void SSLNode::do_handshake(SocketType type){
-	if(type == SOCK_CLIENT){
-		if(server_socket) _close_ssl_socket();
-		if(!m_pSSL) _init_ssl_socket(false);
-	}
-	else if(type == SOCK_SERVER){
-		if(!server_socket) _close_ssl_socket();
-		if(!m_pSSL) _init_ssl_socket(true);
-	}
-	else{
-		ERROR("SSL: UNSUPPORTED SOCKET TYPE!");
-	}
+void SSLNode::do_handshake(){
 	timer = milliseconds();
 	state = CON_STATE_SSL_HANDSHAKE; 
 }
 
 int SSLNode::recv(char *data, size_t size, size_t minsize) const{
-	if((size_t)SSL_pending(this->m_pSSL) < minsize) return 0;
-	int rc = SSL_read(this->m_pSSL, data, size);
-	LOG(3, "SSL: decrypted "<<rc<<" bytes of data.");
+	if(!(state & CON_STATE_CONNECTED)){
+		LOG(3, "SSL: trying to receive from a socket that is not connected!");
+		return 0;
+	}
+	//LOG(3, "SSL: read: pending: "<<m_DataBuffer.input_pending()<<" bytes.");
+	int rc = m_DataBuffer.recv(data, size, minsize);
+	if(rc>0) LOG(3, "SSL: recv "<<rc<<" bytes of data.");
 	return rc;
 }
 
 int SSLNode::send(const char *data, size_t size){
-	return m_SendBuffer.send(data, size);
+	return m_DataBuffer.send(data, size);
 }
 
 int SSLNode::connect(const URL &url){
 	// since the connect call is meaningless for SSL node without an underlying socket
 	// we forward it to the next node, but as a command. 
-	if(!(this->state & CON_STATE_INITIALIZED)){
-		ERROR("CAN ONLY USE CONNECT ON A NEWLY CREATED SOCKET!");
+	if(this->state & CON_STATE_CONNECTED || this->server_socket == true){
+		ERROR("CAN ONLY USE CONNECT ON A NON CONNECTED CLIENT SOCKET!");
 		return -1;
 	}
 	timer = milliseconds();
@@ -136,6 +129,8 @@ int SSLNode::connect(const URL &url){
 	// initialize ssl client method 
 	_init_ssl_socket(false);
 	m_pTransportLayer->connect(url);
+	
+	do_handshake();
 	
 	return 1;
 }
@@ -146,30 +141,29 @@ unique_ptr<Node> SSLNode::accept(){
 	unique_ptr<Node> peer = m_pTransportLayer->accept();
 	if(peer){
 		unique_ptr<SSLNode> con(new SSLNode(m_pNetwork, move(peer), SOCK_SERVER));
-		
-		con->_init_ssl_socket(true);
-	
+		con->do_handshake();
 		return move(con);
 	}
 	return unique_ptr<Node>();
 }
 
 int SSLNode::listen(const URL &url){
-	if(!(this->state & CON_STATE_INITIALIZED)){
-		ERROR("CAN ONLY USE LISTEN ON A NEWLY CREATED SOCKET!");
+	if(this->state & CON_STATE_CONNECTED || this->server_socket == false){
+		ERROR("CAN ONLY USE LISTEN ON A NON CONNECTED SERVER SOCKET!");
 		return -1;
 	}
 	
 	if(m_pTransportLayer->listen(url)>0){
 		_init_ssl_socket(true);
 		this->url = m_pTransportLayer->url;
+		
 		return 1;
 	}
 	return -1;
 }
 
 size_t SSLNode::input_pending() const{
-	return SSL_pending(m_pSSL);
+	return m_DataBuffer.input_pending();
 }
 
 size_t SSLNode::output_pending() const{
@@ -207,19 +201,19 @@ void SSLNode::run(){
 	
 	// send / receive data between internal buffers and output 
 	// but only if the connection is still valid. 
-	if(!(this->state & CON_STATE_INVALID)){
+	if(!(state & CON_STATE_INVALID)){
 		int rc;
 		char tmp[SOCKET_BUF_SIZE];
 		
-		while(!BIO_eof(this->write_buf)){
+		while(BIO_ctrl_pending(this->write_buf)){
 			if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-				LOG(3,"SSL: "<<this->url.url()<<" sending "<<rc<<" bytes of encrypted data.");
+				LOG(3,"SSL: "<<this->url.url()<<" sending "<<rc<<" bytes of encrypted data. "<<hexencode(tmp, rc));
 				m_pTransportLayer->send(tmp, rc);
 			}
 		}
 		
 		if((rc = m_pTransportLayer->recv(tmp, SOCKET_BUF_SIZE))>0){
-			LOG(3,"SSL: "<<this->url.url()<<" received "<<rc<<" bytes of encrypted data.");
+			LOG(3,"SSL: "<<this->url.url()<<" received "<<rc<<" bytes of encrypted data. "<<hexencode(tmp, rc));
 			BIO_write(this->read_buf, tmp, rc);
 		}
 	}
@@ -227,25 +221,14 @@ void SSLNode::run(){
 	if(this->state & CON_STATE_CONNECTED){
 		int rc; 
 		char tmp[SOCKET_BUF_SIZE]; 
-		if((rc = m_SendBuffer.recvOutput(tmp, SOCKET_BUF_SIZE, 0))>0){
-			rc = SSL_write(this->m_pSSL, tmp, rc);
-			LOG(3, "SSL: encrypting "<<rc<<" bytes of data.");
+		if((rc = SSL_read(m_pSSL, tmp, SOCKET_BUF_SIZE))>0){
+			LOG(3, "SSL: "<<url.url()<<" decrypted data "<<rc<<" bytes: "<<hexencode(tmp, rc));
+			m_DataBuffer.sendOutput(tmp, rc);
 		}
-		//(*this)>>m_pTransportLayer.get();
-		//(*this)<<m_pTransportLayer.get();
-		/* instead of this.. ;-) 
-		if(out){
-			while(!BIO_eof(this->write_buf)){
-				if((rc = BIO_read(this->write_buf, tmp, SOCKET_BUF_SIZE))>0){
-					LOG(3,"SSL: "<<url.url()<<" sending "<<rc<<" bytes of encrypted data.");
-					out->send(tmp, rc);
-				}
-			}
-			if((rc = out->recv(tmp, SOCKET_BUF_SIZE))>0){
-				LOG(3,"SSL: "<<url.url()<<" received "<<rc<<" bytes of encrypted data.");
-				BIO_write(this->read_buf, tmp, rc);
-			}
-		}*/
+		if((rc = m_DataBuffer.recvOutput(tmp, SOCKET_BUF_SIZE, 0))>0){
+			rc = SSL_write(this->m_pSSL, tmp, rc);
+			LOG(3, "SSL: "<<url.url()<<" encrypting "<<rc<<" bytes of data: "<<hexencode(tmp, rc));
+		}
 	}
 	
 	// check if the async handshake is completed
@@ -266,7 +249,7 @@ void SSLNode::run(){
 			if((res = SSL_connect(this->m_pSSL))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->url = URL("ssl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
-				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
+				LOG(1,"SSL: connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
@@ -277,7 +260,7 @@ void SSLNode::run(){
 			if((res=SSL_accept(this->m_pSSL))>0){
 				this->state = CON_STATE_ESTABLISHED;
 				this->url = URL("ssl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
-				LOG(1,"ssl connection succeeded! Connected to peer "<<url.url());
+				LOG(1,"SSL: connection succeeded! Connected to peer "<<url.url());
 			}
 			else{
 				//ERR_SSL(res);
@@ -318,20 +301,23 @@ SSLNode::SSLNode(weak_ptr<Network> net, unique_ptr<Node> out, SocketType type):N
 	this->type = NODE_SSL;
 	this->url = out->url;
 	
-	server_socket = false;
-	
 	m_pTransportLayer = move(out);
 	
 	this->read_buf = this->write_buf = 0;
 	
+	server_socket = false;
+		
 	if(type == SOCK_SERVER){
 		_init_ssl_socket(true);
-		server_socket = true;
 	}
 	else if(type == SOCK_CLIENT){
 		_init_ssl_socket(false);
-		server_socket = false;
 	}
+	else {
+		throw new std::exception();
+	}
+	timer = milliseconds();
+	this->state = CON_STATE_SSL_HANDSHAKE;
 }
 
 SSLNode::~SSLNode(){

@@ -351,13 +351,13 @@ public:
 		cmd.hash.from_hex_string(tag);
 		this->data.resize(size);
 		cmd.size = data.size();
-		memcpy(&this->data[0], buf, data.size());
+		memcpy(&this->data[0], buf, size);
 	}
 	Packet(const Packet &other){
 		cmd = other.cmd;
 		data = other.data;
 	}
-	void operator=(Packet &other){
+	void operator=(const Packet &other){
 		cmd = other.cmd;
 		data = other.data;
 	}
@@ -440,9 +440,6 @@ public:
 	
 	void set_option(const string &opt, const string &val);
 	bool get_option(const string &opt, string &res);
-	
-	virtual size_t input_pending(){return 0;}
-	void do_handshake(SocketType type){}// server/client
 protected: 
 	weak_ptr<Network> m_pNetwork;
 	
@@ -498,7 +495,7 @@ public:
 	/** We create a channel and release it to the caller. **/
 	unique_ptr<Channel> createChannel();
 	
-	void do_handshake(SocketType type); 
+	//void do_handshake(SocketType type); 
 protected: 
 	void releaseChannel(const string &tag);
 private:
@@ -549,7 +546,8 @@ public:
 	virtual size_t input_pending() const;
 	virtual size_t output_pending() const;
 		
-	void do_handshake(SocketType type);
+	
+	void do_handshake(); // server/client
 	
 private: 
 	void _init_ssl_socket(bool server_socket);
@@ -557,7 +555,7 @@ private:
 	
 	unique_ptr<Node> m_pTransportLayer; 
 	
-	Buffer m_SendBuffer;
+	Buffer m_DataBuffer;
 	
 	SSL_CTX *m_pCTX;
 	SSL *m_pSSL; 
@@ -624,23 +622,27 @@ private:
 	Buffer m_ReadBuffer;
 	UDTSOCKET socket;
 };
-/*
+
 class BridgeNode : public Node{
 public:
-	BridgeNode(shared_ptr<Network> net);
+	BridgeNode(weak_ptr<Network> net, unique_ptr<Node>, unique_ptr<Node>);
+	virtual ~BridgeNode();
 	
 	virtual int connect(const URL &url);
-	virtual int send(const char *data, size_t maxsize, size_t minsize = 0);
-	virtual int recv(char *data, size_t maxsize, size_t minsize = 0);
+	virtual int send(const char *data, size_t maxsize);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const URL &url);
-	virtual shared_ptr<Node> accept();
+	virtual unique_ptr<Node> accept();
 	virtual void run();
 	//virtual void peg(Node *other);
 	virtual void close();
+	
+private:
+	unique_ptr<Node> m_pNodeOne, m_pNodeTwo;
 };
-*/
+
 /** 
 Implements a SOCKS5 socket.
 
@@ -806,7 +808,7 @@ node->do_handshake(SOCK_CLIENT);
 class Channel : public Node, public PacketHandler{
 	friend class VSLNode;
 protected:
-	Channel(weak_ptr<Network> net, weak_ptr<VSLNode> link, const string &tag = "");
+	Channel(weak_ptr<Network> net, VSLNode* link, const string &tag = "");
 public:
 	virtual ~Channel();
 	
@@ -820,24 +822,29 @@ public:
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	virtual int sendCommand(const Packet &pack);
-	//virtual int recvCommand(Packet *pack);
+	virtual bool recvCommand(Packet &pack);
 	virtual int listen(const URL &url);
 	virtual unique_ptr<Node> accept();
 	virtual void run();
 	virtual void close();
 	
 	virtual void handlePacket(const Packet &pack);
+	
+	// detaches the channel from ext_link
+	void detach();
 private: 
 	bool m_bDeleteInProgress;
 	
-	list<shared_ptr<VSLNode> > m_Peers;
-	list<weak_ptr<Channel> > m_Targets;
+	//list<shared_ptr<VSLNode> > m_Peers;
+	//list<weak_ptr<Channel> > m_Targets;
 	Buffer m_ReadBuffer;
-	shared_ptr<Node> m_pRelay;
+	//shared_ptr<Node> m_pRelay;
 	string m_sHash;
 	
-	unique_ptr<Channel> m_pTarget;
-	weak_ptr<VSLNode> m_extLink;
+	deque<Packet> m_CommandBuffer;
+	
+	//unique_ptr<Channel> m_pTarget;
+	VSLNode* m_extLink;
 };
 
 /**
@@ -971,12 +978,17 @@ public:
 	
 	shared_ptr<VSLNode> server; 
 	
+	// VSLListener methods
+	void onChannelConnected(unique_ptr<Channel> chan);
+	
 	PeerDatabase m_pPeerDb;
 	
-	map<string, shared_ptr<VSLNode> > m_Peers;
+	map<string, shared_ptr<Node> > m_Peers;
 private:
+	list<unique_ptr<Channel> > m_Channels;
+	list<unique_ptr<BridgeNode> > m_Bridges;
 	time_t last_peer_list_broadcast;
-	shared_ptr<VSLNode> getRandomPeer();
+	//VSLNode* getRandomPeer();
 	void _handle_command(Node *source, const Packet &pack);
 	
 };

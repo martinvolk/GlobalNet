@@ -119,8 +119,12 @@ void Network::init(){
 Network::~Network(){
 	LOG(1,"NET: shutting down..");
 	
+	
+	m_Bridges.clear();
+	m_Channels.clear();
+	
 	// close connections
-	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end();){
+	for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end();){
 		(*it).second.reset();
 		m_Peers.erase(it++);
 	}
@@ -130,20 +134,20 @@ Network::~Network(){
 	// use this function to release the UDT library
 	UDT::cleanup();
 }
-
-shared_ptr<VSLNode> Network::getRandomPeer(){
+/*
+VSLNode* Network::getRandomPeer(){
 	int r = rand() % m_Peers.size();
 	LOG(1,"=================> USING PEER "<<r);
 	if(!m_Peers.size()) return shared_ptr<VSLNode>();
 	int c=0;
-	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin();
+	for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin();
 			it != m_Peers.end(); it++){
-		if(r == c) return (*it).second;
+		if(r == c) return (*it).second.get();
 		c++;
 	}
-	return shared_ptr<VSLNode>();
+	return 0;
 }
-
+*/
 /**
 Create a new tunnel to the url that is specified in the argument. 
 
@@ -183,19 +187,32 @@ unique_ptr<Node> Network::createTunnel(const list<URL> &links){
 	
 	LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
 	// we connect directly to the first peer. 
-	unique_ptr<Node> parent = this->connect(*li);
-	//VSLNode *parent_node = 0;
+	unique_ptr<Node> chan = this->connect(*li);
 	li++;
 	
-	// and then through the first peer, we issue connection requests to 
-	// subsequent peers. 
-	for(unsigned int c = 0; c<links.size()-1; c++){
+	// and then we create new encryption nodes and connect them through
+	// the first peer. 
+	while(li != links.end()){
 		// does a relay connect to the next peer. 
+		LOG(2,"NET: sending RELAY_CONNECT to "<<chan->url.url()<<" adr: "<<chan.get());
+		chan->sendCommand(Packet(RELAY_CONNECT, (*li).url().c_str(), (*li).url().length(), ""));
 		
-		LOG(1,"NET: connecting to intermediate hop: "<<(*li).url());
-		
-		// relay to the next host
-		parent->connect(*li);
+		// set up encryption if the relay is a VSL one. 
+		if((*li).protocol().compare("vsl") == 0){
+			// put the remote channel into encryption mode and create a new 
+			// encryption node that will encrypt all the traffic. 
+			LOG(2,"CHANNEL: sending ENCRYPT_BEGIN to "<<chan->url.url());
+			chan->sendCommand(Packet(CMD_ENCRYPT_BEGIN, "", 0, ""));
+			
+			unique_ptr<SSLNode> ssl(new SSLNode(shared_from_this(), move(chan), SOCK_CLIENT));
+			ssl->do_handshake();
+			shared_ptr<VSLNode> node(new VSLNode(shared_from_this(), move(ssl)));
+			//node->do_handshake(SOCK_CLIENT);
+			
+			// make new target a channel of the new node. 
+			chan = node->createChannel();
+			m_Peers[VSL::to_string(rand())] = node;
+		}
 		
 		li++;
 		
@@ -214,7 +231,7 @@ unique_ptr<Node> Network::createTunnel(const list<URL> &links){
 		parent = chan;*/
 	}
 	//if(parent_node) peers[full_path] = parent_node;
-	return move(parent);
+	return move(chan);
 }
 
 string con_state_to_string(int state);
@@ -222,15 +239,16 @@ string con_state_to_string(int state);
 // establish a new connection to the url
 unique_ptr<Node> Network::connect(const URL &url){
 	if(url.protocol().compare("vsl") == 0){
-		map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.find(url.url());
+		map<string, shared_ptr<Node> >::iterator it = m_Peers.find(url.url());
 		// if don't have a connection then we connect
-		shared_ptr<VSLNode> node;
+		unique_ptr<Channel> chan;
 		if(it == m_Peers.end()){
 			LOG(1,"NET: connecting to peer "<<url.url());
 			unique_ptr<UDTNode> udt(new UDTNode(shared_from_this()));
 			unique_ptr<SSLNode> ssl(new SSLNode(shared_from_this(), move(udt), SOCK_CLIENT));
-			node = shared_ptr<VSLNode>(new VSLNode(shared_from_this(), move(ssl)));
+			shared_ptr<VSLNode> node(new VSLNode(shared_from_this(), move(ssl)));
 			node->connect(url);
+			chan = node->createChannel();
 			m_Peers[url.url()] = node;
 			
 			PeerDatabase::Record r;
@@ -239,9 +257,9 @@ unique_ptr<Node> Network::connect(const URL &url){
 		}
 		else {
 			LOG(3, "NET: using an already connected peer for "<<url.url());
-			node = (*it).second;
+			chan = dynamic_pointer_cast<VSLNode>((*it).second)->createChannel();
 		}
-		return node->createChannel();
+		return move(chan);
 	}
 	else if(url.protocol().compare("tcp") == 0){
 		unique_ptr<TCPNode> tcp(new TCPNode(shared_from_this()));
@@ -264,7 +282,7 @@ void Network::run() {
 	}
 	
 	// accept incoming client connections on the standard port 
-	shared_ptr<Node> client;
+	unique_ptr<Node> client;
 	if(server && server->state & CON_STATE_LISTENING && (client = this->server->accept())){
 		PeerDatabase::Record r;
 		r.peer = client->url;
@@ -275,52 +293,117 @@ void Network::run() {
 		if(m_Peers.find(client->url.url()) != m_Peers.end()){
 			ERROR("NET: run: trying to add a peer that already exists!!");
 		}
-		m_Peers[client->url.url()] = dynamic_pointer_cast<VSLNode>(client);
+		m_Peers[client->url.url()] = move(client);
 	}
+	
+	// RUN ALL MANAGED CHANNELS
+	for(list<unique_ptr<Channel> >::iterator it = m_Channels.begin();
+			it != m_Channels.end(); ){
+		Packet pack; 
+		if((*it)->state & CON_STATE_DISCONNECTED){
+			m_Channels.erase(it++);
+			continue;
+		}
+		if((*it)->recvCommand(pack)){
+			LOG(3, "NET: received command: "<<pack.cmd.code);
+			if(pack.cmd.code == RELAY_CONNECT){
+				LOG(3, "NET: RELAY_CONNECT from "<<(*it)->url.url());
+				// create a bridge that will manage the channel for us from now on
+				unique_ptr<Node> con = this->connect(URL(pack.data.data()));
+				if(con){
+					// now we need to set up chan <- adapter -> con
+					unique_ptr<BridgeNode> bridge(new BridgeNode(shared_from_this(), move(*it), move(con)));
+					m_Bridges.push_back(move(bridge));
+					m_Channels.erase(it++);
+					continue;
+				}
+			}
+			else if(pack.cmd.code == CMD_ENCRYPT_BEGIN){
+				LOG(3, "NET: ENCRYPT_BEGIN from "<<(*it)->url.url());
+				// here we create a new encrypted node and make it manage the channel
+				// ssl will write into a buffer, buffer will be read by adapter and 
+				// fed into our channel. VSL will be stored as a peer
+				//shared_ptr<Buffer> buf(new Buffer());
+				//unique_ptr<Node> transport(new MemoryNode(shared_from_this(), buf));
+				// ssl will write into the current channel and read encrypted data from it. 
+				unique_ptr<SSLNode> ssl(new SSLNode(shared_from_this(), move(*it), SOCK_SERVER));
+				ssl->do_handshake();
+				shared_ptr<VSLNode> node(new VSLNode(shared_from_this(), move(ssl)));
+				node->url = URL("vsl://"+pack.cmd.hash.hex());
+				
+				m_Peers[node->url.url()] = node;
+				
+				// we can replace the current channel simply with the new layered one.
+				//*it = move(node->createChannel(
+				m_Channels.erase(it++);
+				continue;
+			}
+			
+		}
+		it++;
+	}
+	
+	for(list<unique_ptr<BridgeNode> >::iterator it = m_Bridges.begin();
+			it != m_Bridges.end(); ){
+		if((*it)->state & CON_STATE_DISCONNECTED){
+			m_Bridges.erase(it++);
+			continue;
+		}
+		(*it)->run();
+		it++;
+	}	
 	
 	//for(map<Channel*, Channel*>::iterator it = channels.begin();
 	//	it != channels.end(); it++){
 	//	(*it).second->run();
 	//}
 	
-	for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); 
+	// RUN ALL PEERS
+	for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); 
 			it != m_Peers.end(); ){
-		shared_ptr<VSLNode> peer = (*it).second;
 		Packet pack;
-		if(peer->state & CON_STATE_DISCONNECTED){
+		if((*it).second->state & CON_STATE_DISCONNECTED){
+			(*it).second.reset();
 			m_Peers.erase(it++);
-			peer.reset();
 			//it++;
 			continue;
 		}
-		peer->run();
+		(*it).second->run();
 		
 		it++;
 	}
 	
+	// SEND PEER LISTS
 	if(this->last_peer_list_broadcast < time(0) - NET_PEER_LIST_INTERVAL){
 		LOG(1,endl<<"CONNECTIONS:");
 		
-		LOG(1,"PEERS:");
-		for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
-			LOG(1,(*it).first<<", state: "<<con_state_to_string((*it).second->state));
+		//LOG(1,"PEERS:");
+		for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
+			//LOG(1,(*it).first<<", state: "<<con_state_to_string((*it).second->state));
 		}
-		for(map<string, shared_ptr<VSLNode> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
+		for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end(); it++){
 			//LOG(1,"NET: sending peer list to the peer.");
-			shared_ptr<Peer> p = (*it).second;
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 
-			r.peer = p->url;
+			r.peer = (*it).second->url;
 			this->m_pPeerDb.update(r);
 			
 			// send a peer list to the peer 
 			string peers = m_pPeerDb.to_string(25);
-			p->sendCommand(CMD_PEER_LIST, peers.c_str(), peers.length(), "");
+			(*it).second->sendCommand(Packet(CMD_PEER_LIST, peers.c_str(), peers.length(), ""));
 		}
 		this->last_peer_list_broadcast = time(0);
 	}
 	
 	
+}
+
+void Network::onChannelConnected(unique_ptr<Channel> chan){
+	// if we don't want to manage the newly connected channel, 
+	// we can just let it be and it will be destroyed because pointer
+	// is a unique_ptr so we have the only copy. 
+	LOG(3, "NET: new channel connected! "<<chan->id()<<" "<<chan.get()<<" from: "<<chan->url.url());
+	m_Channels.push_back(move(chan));
 }
 
 shared_ptr<Node> Network::createNode(const string &name){

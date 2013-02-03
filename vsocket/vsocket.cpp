@@ -247,9 +247,9 @@ namespace VSL{
 	void print_stats(int socket){
 		LOCK(mu,0);
 		uint np = 0;
-		for(map<string, shared_ptr<VSLNode> >::iterator it = net->m_Peers.begin();
+		for(map<string, shared_ptr<Node> >::iterator it = net->m_Peers.begin();
 				it != net->m_Peers.end(); it++ ){
-			shared_ptr<VSLNode> peer = (*it).second;
+			VSLNode* peer = dynamic_cast<VSLNode*>((*it).second.get());
 			SEND_SOCK(socket, "peer: " << peer->url.url()<<" state: "<<con_state_to_string(peer->state));
 			np++;
 		}

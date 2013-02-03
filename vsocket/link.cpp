@@ -20,6 +20,16 @@ Node *LinkNode::accept(){
 	return 0; 
 }
 
+
+LinkNode::LinkNode(shared_ptr<Network> net):Node(net){ 
+	this->type = NODE_LINK;
+	this->state = CON_STATE_INITIALIZED;
+}
+
+LinkNode::~LinkNode(){
+	this->close();
+}
+
 int LinkNode::connect(const URL &url){
 	// calling connect on a link can have several meanings. If the host starts
 	// with "peer:" the link will connect to a peer. If the link is already 
@@ -154,11 +164,3 @@ void LinkNode::close(){
 	this->_output->close();
 }
 
-LinkNode::LinkNode(shared_ptr<Network> net):Node(net){ 
-	this->type = NODE_LINK;
-	this->state = CON_STATE_INITIALIZED;
-}
-
-LinkNode::~LinkNode(){
-	this->close();
-}

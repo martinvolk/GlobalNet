@@ -164,8 +164,7 @@ void UDTNode::run(){
 		// if disconnected
 		if(UDT::getsockstate(this->socket) == CLOSED || UDT::getlasterror().getErrorCode() == UDT::ERRORINFO::ECONNLOST){
 			LOG(1,"UDT: "<<url.url()<<" "<<rc <<": "<< UDT::getlasterror().getErrorMessage());
-			//UDT::close(this->socket);
-			this->state = CON_STATE_DISCONNECTED;
+			close();
 		}
 	}
 }
@@ -225,7 +224,7 @@ void UDTNode::close(){
 	
 	if(this->socket)
 		UDT::close(this->socket);
-	
+	socket = 0;
 	LOG(3,"UDT: disconnected!");
 }
 

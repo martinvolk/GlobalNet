@@ -9,14 +9,15 @@ Free software. Part of the GlobalNet project.
 
 
 NodeAdapter::NodeAdapter(weak_ptr<Network> net, shared_ptr<BufferInterface> other):Node(net), m_pNode(other){
-	
+	state = CON_STATE_ESTABLISHED;
 }
 
 NodeAdapter::~NodeAdapter(){
+	LOG(3, "ADAPTER: deleting!");
 }
 
 int NodeAdapter::connect(const URL &url){
-	this->state = CON_STATE_CONNECTED;
+	this->state = CON_STATE_ESTABLISHED;
 	this->url = url;
 	return 1;
 }

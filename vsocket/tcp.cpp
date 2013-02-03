@@ -148,7 +148,7 @@ close:
 }
 
 int TCPNode::recv(char *data, size_t size, size_t minsize) const{
-	if(m_ReadBuffer.input_pending() < minsize)  return 0;
+	if(m_ReadBuffer.input_pending() == 0 || m_ReadBuffer.input_pending() < minsize)  return 0;
 	//m_ReadBuffer.recv(data, size, minsize);
 	return m_ReadBuffer.recv(data, size, minsize);
 	//vector<char> buf; buf.reserve(size); 

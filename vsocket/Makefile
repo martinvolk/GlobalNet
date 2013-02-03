@@ -38,7 +38,7 @@ endif
 
 DIR = $(shell pwd)
 LIB = libvsocket.a
-OBJECTS = buffer.o if.o db.o node.o socks.o mem.o vsl.o ssl.o tcp.o udt.o net.o vsocket.o adapter.o url.o channel.o
+OBJECTS = bridge.o buffer.o if.o db.o node.o socks.o mem.o vsl.o ssl.o tcp.o udt.o net.o vsocket.o adapter.o url.o channel.o
 
 all: $(LIB)
 

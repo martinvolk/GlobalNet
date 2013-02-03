@@ -4,20 +4,19 @@
 MemoryNode::MemoryNode(weak_ptr<Network> net, shared_ptr<BufferInterface> buffer):Node(net){
 	state = CON_STATE_ESTABLISHED;
 	if(buffer)
-		m_pBuffer = shared_ptr<BufferInterface>(buffer);
+		m_pBuffer = buffer;
 	else
 		m_pBuffer = shared_ptr<Buffer>(new Buffer());
 }
 
 MemoryNode::~MemoryNode(){
-	
+	LOG(3, "MEMORY: deleting!");
 }
 
 int MemoryNode::sendOutput(const char *data, size_t size){
-	m_pBuffer->sendOutput(data, size);
 	//int rc = BIO_write(read_buf, data, size);
 	LOG(3,"MEMNODE: sendOutput, wrote: "<<size<<" bytes.");
-	return size;
+	return m_pBuffer->sendOutput(data, size);
 }
 
 int MemoryNode::recvOutput(char *data, size_t size, size_t minsize){
@@ -28,8 +27,7 @@ int MemoryNode::recvOutput(char *data, size_t size, size_t minsize){
 	
 int MemoryNode::send(const char *data, size_t size){
 	LOG(3,"MEMNODE: send "<<size<<" bytes. "<<url.url());
-	m_pBuffer->sendOutput(data, size);
-	return size;
+	return m_pBuffer->send(data, size);
 }
 
 int MemoryNode::recv(char *data, size_t size, size_t minsize) const {

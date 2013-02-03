@@ -7,13 +7,22 @@ Free software. Part of the GlobalNet project.
 
 #include "local.h"
 
-BridgeNode::BridgeNode(shared_ptr<Network> net):Node(net){
+/** 
+A bridge connects two outgoing nodes and reads data from one and forwards
+it to the other - and vice versa. 
+**/
+BridgeNode::BridgeNode(weak_ptr<Network> net, unique_ptr<Node> node1, unique_ptr<Node> node2):
+	Node(net), m_pNodeOne(move(node1)), m_pNodeTwo(move(node2)){
 	type = NODE_BRIDGE;
+}
+
+BridgeNode::~BridgeNode(){
+	LOG(3, "BRIDGE: deleting.");
 }
 
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
-Node *BridgeNode::accept(){
+unique_ptr<Node> BridgeNode::accept(){
 	ERROR("CON_accept not implemented!");
 	return 0;
 }
@@ -23,66 +32,51 @@ int BridgeNode::connect(const URL &url){
 	return -1;
 }
 
-int BridgeNode::send(const char *data, size_t size, size_t minsize){
-	ERROR("CON_send not implemented!");
+int BridgeNode::send(const char *data, size_t size){
+	ERROR("BRIDGE: send not implemented!");
 	return -1;
 }
-int BridgeNode::recv(char *data, size_t size, size_t minsize){
+int BridgeNode::recv(char *data, size_t size, size_t minsize) const{
+	ERROR("BRIDGE: recv not implemented!");
 	// recv will be called by both of our nodes usually but we will handle 
 	// the data flow in the main loop.. 
 	return -1;
 }
 
 void BridgeNode::run(){
-	Node::run();
-	
-	// if we are still disconnected and our monitored connection has switched to connected state
-	// then we have to notify our input of the change by sending the RELAY_CONNECT_OK command. 
-	if(this->_output){
-		if(!(this->state & CON_STATE_CONNECTED) && this->_output->state & CON_STATE_CONNECTED){
-			if(this->_input){
-				this->_input->sendCommand(RELAY_CONNECT_OK, "", 0, "");
-			}
-			LOG("BRIDGE: connection established on the remote end!");
-			this->state = CON_STATE_ESTABLISHED; 
-		}
-		// if we think we are connected and the other node has gone to disconnected, 
-		// then we just disconnect from the peer. All disconnected connections are 
-		// cleaned up after all other loops have run next time. 
-		if(this->state & CON_STATE_CONNECTED && this->_output->state & CON_STATE_INVALID){
-			LOG("BRIDGE: connection _output disconnected!");
-			//this->_input = 0;
-			if(this->_input){
-				// we send relay disconnect because we want to be able to save the connection on the remote 
-				// end. So simply doing close() here would be inappropriate because the client may want
-				// to reuse the already opened connection to the relay (us). 
-				this->_input->sendCommand(RELAY_DISCONNECT, "", 0, "");
-			}
-			this->state = CON_STATE_DISCONNECTED;
-		}
-		if(this->state & CON_STATE_CONNECTED && this->_input->state & CON_STATE_INVALID){
-			if(this->_output){
-				this->_output->close();
-			}
-			LOG("BRIDGE: connection _input disconnected!");
-			this->state = CON_STATE_DISCONNECTED;
-		}
+	if(this->m_pNodeOne->state & CON_STATE_ESTABLISHED && 
+			this->m_pNodeTwo->state & CON_STATE_ESTABLISHED){
+		this->state = CON_STATE_ESTABLISHED;
 	}
 	
-	if(this->_input && this->_output){
+	this->m_pNodeOne->run();
+	this->m_pNodeTwo->run();
+	
+	if(this->state & CON_STATE_CONNECTED){
 		char tmp[SOCKET_BUF_SIZE];
 		int rc;
 		
-		// read data from one end and forward it to the other end and vice versa
-		if ((rc = this->_input->recv(tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("BRIDGE: received "<<rc<<" bytes from _input");
-			//LOG(hexencode(tmp, rc));
-			this->_output->send(tmp, rc);
+		if(this->m_pNodeOne->state & CON_STATE_DISCONNECTED){
+			this->m_pNodeTwo->close();
+			this->state = CON_STATE_DISCONNECTED;
+			return;
 		}
-		if ((rc = this->_output->recv(tmp, SOCKET_BUF_SIZE))>0){
-			//LOG("BRIDGE: received "<<rc<<" bytes from output!");
+		else if(this->m_pNodeTwo->state & CON_STATE_DISCONNECTED){
+			this->m_pNodeOne->close();
+			this->state = CON_STATE_DISCONNECTED;
+			return;
+		}
+	
+		// read data from one end and forward it to the other end and vice versa
+		if ((rc = this->m_pNodeOne->recv(tmp, SOCKET_BUF_SIZE))>0){
+			LOG(3, "BRIDGE: received "<<rc<<" bytes from m_pNodeOne");
 			//LOG(hexencode(tmp, rc));
-			this->_input->send(tmp, rc);
+			this->m_pNodeTwo->send(tmp, rc);
+		}
+		if ((rc = this->m_pNodeTwo->recv(tmp, SOCKET_BUF_SIZE))>0){
+			LOG(3, "BRIDGE: received "<<rc<<" bytes from output!");
+			//LOG(hexencode(tmp, rc));
+			this->m_pNodeOne->send(tmp, rc);
 		}
 	}
 }

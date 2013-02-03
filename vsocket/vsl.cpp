@@ -34,7 +34,10 @@ VSLNode::~VSLNode(){
 	LOG(3,"VSL: deleting "<<url.url());
 	state = 0;
 	close(); //?? safe?
-	
+	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
+			it != m_Channels.end(); it++){
+		(*it).second->detach();
+	}
 	/* No more need to do this with weak ptr :)
 	list<Channel*> chans;
 	for(map<string, Channel*>::iterator it = m_Channels.begin(); 
@@ -63,9 +66,8 @@ void VSLNode::close(){
 }
 
 unique_ptr<Channel> VSLNode::createChannel(){
-	Channel *raw = new Channel(m_pNetwork, shared_from_this());
-	unique_ptr<Channel> chan(raw); 
-	m_Channels[chan->id()] = raw;
+	unique_ptr<Channel> chan(new Channel(m_pNetwork, this)); 
+	m_Channels[chan->id()] = chan.get();
 	return chan;
 }
 
@@ -114,6 +116,7 @@ unique_ptr<Node> VSLNode::accept(){
 	// forward the code to the next node. 
 	unique_ptr<Node> peer;
 	if((peer = m_pTransportLayer->accept())){
+		LOG(3, "VSL: accepted new connection from "<<peer->url.url());
 		// the output has a new stream connected. 
 		// we need to create a new PEER node that will handle this new connection. 
 		unique_ptr<VSLNode> con(new VSLNode(m_pNetwork, move(peer)));
@@ -169,15 +172,17 @@ int VSLNode::sendCommand(const Packet &pack){
 	LOG(3,"VSL: sendCommand "<<pack.cmd.code<<": "<<pack.cmd.size<<" bytes data to "<<url.url());
 	PacketHeader cmd = pack.cmd;
 	cmd.size = pack.data.size();
-	m_pTransportLayer->send((char*)&cmd, sizeof(PacketHeader));
-	m_pTransportLayer->send(pack.data.data(), pack.data.size());
+	vector<char> tmp(sizeof(PacketHeader)+pack.data.size());
+	std::copy((char*)&cmd, ((char*)&cmd) + sizeof(PacketHeader), tmp.begin());
+	std::copy(pack.data.begin(), pack.data.end(), tmp.begin()+sizeof(PacketHeader));
+	m_pTransportLayer->send(tmp.data(), tmp.size());
 	return pack.size();
 }
-
+/*
 void VSLNode::do_handshake(SocketType type){
 	this->state = CON_STATE_CONNECTING;
 	m_pTransportLayer->do_handshake(type); 
-}
+}*/
 /**
 This function handles incoming packets received from output() node. 
 **/
@@ -189,30 +194,22 @@ void VSLNode::_handle_packet(const Packet &packet){
 		//BIO_write(this->in_read, packet.data, packet.cmd.size);
 	}
 	else if(packet.cmd.code == CMD_CHAN_INIT){
-		LOG(2,"VSL: received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
+		LOG(2,"VSL: "<<this<<" received CHAN_INIT "<<packet.cmd.hash.hex()<<" from "<<url.url());
 		map<string, Channel* >::iterator it = m_Channels.find(packet.cmd.hash.hex());
 		if(it == m_Channels.end()){
 			//shared_ptr<Network> net = m_pNetwork.lock();
 			//if(net) net->onChannelConnected(packet.cmd.hash.hex());
-			Channel* chan = new Channel(m_pNetwork, shared_from_this(), packet.cmd.hash.hex());
-			m_Channels[packet.cmd.hash.hex()] = chan;
-			// signal successful connection
-			this->sendCommand(Packet(CMD_CHAN_ACK, "", 0, chan->id()));
+			Channel *ch = new Channel(m_pNetwork, this, packet.cmd.hash.hex());
+			m_Channels[packet.cmd.hash.hex()] = ch; // this is ok since Channel automatically unregisters itself upon deletion 
+			unique_ptr<Channel> chan(ch);
+			shared_ptr<Network> net = m_pNetwork.lock();
+			if(net){
+				net->onChannelConnected(move(chan));
+			}
 		}
 		else{
 			ERROR("VSL: CHAN_INIT: attempting to initialize an already registered channel!");
 		}
-	}
-	else if(packet.cmd.code == CMD_CHAN_CLOSE){
-		LOG(3, "VSL: got CMD_CHAN_CLOSE "<<packet.cmd.hash.hex()<<" from "<<url.url());
-		map<string, Channel* >::iterator it = m_Channels.find(packet.cmd.hash.hex());
-		if(it != m_Channels.end()){
-			(*it).second->close();
-			m_Channels.erase(it); 
-		}
-		// the shared ptr to the channel is now deleted. If there are any other 
-		// dangling pointers to this channel, they will still work, but as soon 
-		// as they are released, the channel object will be deleted. 
 	}
 }
 
@@ -233,7 +230,7 @@ void VSLNode::run(){
 	for(map<string, Channel* >::iterator it = m_Channels.begin(); 
 			it != m_Channels.end();){
 		if((*it).second->state & CON_STATE_DISCONNECTED){
-			(*it).second->m_extLink.reset();
+			(*it).second->m_extLink = 0;
 			(*it).second->close();
 			// send channel close notification to the other end. 
 			this->sendCommand(Packet(CMD_CHAN_CLOSE, "", 0, (*it).second->id()));
@@ -245,7 +242,7 @@ void VSLNode::run(){
 	}
 	
 	// if we are waiting for connection and connection of the underlying node has been established
-	if((this->state & CON_STATE_CONNECTING) && (m_pTransportLayer->state & CON_STATE_CONNECTED)){
+	if(!(this->state & CON_STATE_CONNECTED) && (m_pTransportLayer->state & CON_STATE_CONNECTED)){
 		// copy the hostname 		  
 		this->url = URL("vsl", m_pTransportLayer->url.host(), m_pTransportLayer->url.port());
 		// send information about our status to the other peer. 
@@ -255,9 +252,9 @@ void VSLNode::run(){
 		this->state = CON_STATE_ESTABLISHED;
 	}
 	// handle data flow if we are connected to a peer. 
-	else if(this->state & CON_STATE_CONNECTED){
+	if(this->state & CON_STATE_CONNECTED){
 		// parse packets
-		if(!m_bPacketReadInProgress){
+		if(!m_bPacketReadInProgress){	
 			if(m_pTransportLayer->input_pending() >= sizeof(m_CurrentPacket.cmd)){
 				m_bPacketReadInProgress = true;
 				LOG(3, "VSL: reading packet header from "<<url.url());
@@ -278,11 +275,12 @@ void VSLNode::run(){
 				if(!m_CurrentPacket.cmd.hash.is_zero()){
 					map<string, Channel* >::iterator h = m_Channels.find(m_CurrentPacket.cmd.hash.hex()); 
 					if(h != m_Channels.end()){
-						LOG(2,"VSL: passing packet to listener "<<m_CurrentPacket.cmd.hash.hex()<<": "<<m_CurrentPacket.cmd.size<<" bytes.");
+						LOG(2,"VSL: "<<this<<" passing packet to listener "<<m_CurrentPacket.cmd.hash.hex()<<": "<<m_CurrentPacket.cmd.size<<" bytes. CMD: "<<m_CurrentPacket.cmd.code);
 						(*h).second->handlePacket(m_CurrentPacket);
 					}
-					
-					_handle_packet(m_CurrentPacket);
+					else{
+						_handle_packet(m_CurrentPacket);
+					}
 				}
 				m_bPacketReadInProgress = false;
 			}

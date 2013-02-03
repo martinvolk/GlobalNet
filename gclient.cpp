@@ -51,12 +51,18 @@ VSL::VSOCKET Service::accept(){
 Service *socks;
 Service *console;
 
+void cleanup(){
+	LOG(1, "EXITING!");
+	VSL::shutdown();
+}
+
 static bool shutting_down = false;
 void signal_handler(int sig){
 	if(shutting_down) {
 		LOG(1,"SHUTDOWN ALREADY IN PROGRESS!");
 		return;
 	}
+	
 	LOG(1,"SHUTTING DOWN!");
 	shutting_down = true;
 }
@@ -85,7 +91,9 @@ int main(int argc, char* argv[])
 	};
 	
 	struct sigaction sigIntHandler;
-
+	
+	atexit(cleanup);
+	
 	sigIntHandler.sa_handler = signal_handler;
 	sigemptyset(&sigIntHandler.sa_mask);
 	sigIntHandler.sa_flags = 0;
@@ -119,8 +127,9 @@ int main(int argc, char* argv[])
 VSL::SOCKINFO info;
 VSL::VSOCKET socket = VSL::socket(); 
 list<URL> path; 
-path.push_back(URL("vsl://31.192.230.183:9000"));
-path.push_back(URL("vsl://31.192.230.183:9000"));
+path.push_back(URL("vsl://localhost:9000"));
+//path.push_back(URL("vsl://31.192.230.183:9000"));
+//path.push_back(URL("vsl://31.192.230.183:9000"));
 //path.push_back(URL("vsl://85.224.229.245:9000"));
 path.push_back(URL("tcp://whatismyip.com:80"));
 
@@ -144,7 +153,7 @@ while(true){
     response += tmp;
   }
   
-  if(time(0) - t > 200){
+  if(time(0) - t > 10){
     ERROR("Response timed out!");
 cout<<"Response: "<<response<<endl;
    return 0;
@@ -174,6 +183,8 @@ return 0;
 	Service *console = new ConsoleService(); 
 	
 	if(socks->listen(URL("socks", "127.0.0.1", port)) == -1){
+		delete socks;
+		delete console; 
 		return 0;
 	}
 	
@@ -197,13 +208,10 @@ return 0;
 		console->run();
 		usleep(1000); // microseconds
 	}
+	delete socks;
+	delete console; 
 	
 	shutting_down = true;
-	
-	delete socks;
-	delete console;
-	
-	VSL::shutdown();
 	
 	return 1;
 }
