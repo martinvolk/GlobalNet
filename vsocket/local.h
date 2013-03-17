@@ -1049,7 +1049,7 @@ public:
 	// VSLListener methods
 	void onChannelConnected(unique_ptr<Channel> chan);
 	
-	PeerDatabase m_pPeerDb;
+	shared_ptr<PeerDatabase> m_pPeerDb;
 	
 	map<string, shared_ptr<Node> > m_Peers;
 private:

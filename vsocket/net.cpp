@@ -114,10 +114,14 @@ void Network::init(){
 			ERROR("ERROR no available listen ports left!");
 		}
 	}
+	
+	m_pPeerDb = shared_ptr<PeerDatabase>(new PeerDatabase());
 }
 
 Network::~Network(){
 	LOG(1,"NET: shutting down..");
+	
+	m_pPeerDb.reset();
 	
 	m_Bridges.clear();
 	
@@ -132,7 +136,8 @@ Network::~Network(){
 	}
 	m_Peers.clear();
 	server.reset();
-
+	
+	
 	LOG(3,"NET: cleaning up UDT..");
 	// use this function to release the UDT library
 	UDT::cleanup();
@@ -256,7 +261,7 @@ unique_ptr<Node> Network::connect(const URL &url){
 			
 			PeerDatabase::Record r;
 			r.peer = url;
-			m_pPeerDb.insert(r);
+			m_pPeerDb->insert(r);
 		}
 		else {
 			LOG(3, "NET: using an already connected peer for "<<url.url());
@@ -281,7 +286,7 @@ void Network::run() {
 	if(this->server){
 		PeerDatabase::Record r;
 		r.peer = this->server->url;
-		m_pPeerDb.insert(r);
+		m_pPeerDb->insert(r);
 	}
 	
 	// accept incoming client connections on the standard port 
@@ -290,7 +295,7 @@ void Network::run() {
 		PeerDatabase::Record r;
 		r.peer = client->url;
 		r.hub = server->url;
-		m_pPeerDb.insert(r);
+		m_pPeerDb->insert(r);
 		
 		//peer->setListener(new _PeerListener(this));
 		if(m_Peers.find(client->url.url()) != m_Peers.end()){
@@ -389,10 +394,10 @@ void Network::run() {
 			// update the record of the current peer in the database 
 			PeerDatabase::Record r; 
 			r.peer = (*it).second->url;
-			this->m_pPeerDb.update(r);
+			this->m_pPeerDb->update(r);
 			
 			// send a peer list to the peer 
-			string peers = m_pPeerDb.to_string(25);
+			string peers = m_pPeerDb->to_string(25);
 			(*it).second->sendCommand(Packet(CMD_PEER_LIST, peers.c_str(), peers.length(), ""));
 		}
 		this->last_peer_list_broadcast = time(0);

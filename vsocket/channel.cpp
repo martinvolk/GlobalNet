@@ -119,7 +119,7 @@ void Channel::handlePacket(const Packet &pack){
 	else if(pack.cmd.code == CMD_REMOTE_LISTEN_DATA){
 		uint32_t id = ntohl(*(uint32_t*)pack.data.data());
 		vector<char> data = vector<char>(pack.data.data()+sizeof(id), pack.data.data()+pack.data.size());
-		data[data.size()] = 0;
+		//data[data.size()] = 0;
 		LOG(3, "CHANNEL: remote listen data id: "<<id);
 		
 		if(m_RemoteClients.find(id) != m_RemoteClients.end()){
@@ -319,10 +319,10 @@ ChannelRemoteConnection::~ChannelRemoteConnection(){
 int ChannelRemoteConnection::send(const char *data, size_t size){
 	string str = to_string(m_iTag);
 	vector<char> pack; 
-	pack.resize(size+sizeof(m_iTag));
 	uint32_t id =  htonl(m_iTag);
-	memcpy(pack.data(), &id, sizeof(m_iTag));
-	memcpy(&pack[sizeof(m_iTag)], data, size);
+	pack.resize(size+sizeof(id));
+	memcpy(pack.data(), &id, sizeof(id));
+	memcpy(&pack[sizeof(id)], data, size);
 	if(!m_pChannel) return 0; 
 	
 	m_pChannel->sendCommand(CMD_REMOTE_LISTEN_DATA, pack.data(), pack.size(), "");

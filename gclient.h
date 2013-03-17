@@ -10,6 +10,8 @@ Free software. Part of the GlobalNet project.
 
 #define DEBUG
 
+
+
 #include <string>
 #ifndef WIN32
    #include <unistd.h>
@@ -41,6 +43,7 @@ Free software. Part of the GlobalNet project.
 #include "vsocket/vsocket.h"
 
 using namespace std;
+
 
 #define LOG(lev,msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; fflush(stdout);}
 

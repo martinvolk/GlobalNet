@@ -189,6 +189,7 @@ int main(int argc, char* argv[])
 	}
 	delete socks;
 	delete console; 
+	delete secret;
 	
 	shutting_down = true;
 	

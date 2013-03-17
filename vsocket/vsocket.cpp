@@ -108,12 +108,14 @@ namespace VSL{
 			(*it).second->close();
 			(*it).second.reset();
 		}
-		sockets.clear();
-		net.reset();
+		
 		running = false;
 		UNLOCK(mu, 0);
 		void *ret;
 		pthread_join(worker, &ret);
+		
+		//sockets.clear();
+		//net.reset();
 	}
 	
 	
@@ -121,7 +123,7 @@ namespace VSL{
 					vector<PEERINFO> &peers, unsigned int maxcount){
 		LOCK(mu,0);
 		peers.reserve(peers.size()+maxcount);
-		vector<PeerDatabase::Record> random = net->m_pPeerDb.random(maxcount);
+		vector<PeerDatabase::Record> random = net->m_pPeerDb->random(maxcount);
 		for(vector<PeerDatabase::Record>::iterator it = random.begin();
 			it != random.end(); it++){
 				PEERINFO pi;

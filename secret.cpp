@@ -5,7 +5,7 @@ SecretService::SecretService(){
 }
 
 SecretService::~SecretService(){
-	
+	LOG(3, "SECRET: deleting..");
 }
 
 void SecretService::addListeningChain(const URL &serviceaddr, const list<URL> &urls, const URL &listenaddr){
