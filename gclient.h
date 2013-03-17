@@ -42,9 +42,9 @@ Free software. Part of the GlobalNet project.
 
 using namespace std;
 
-#define LOG(lev,msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; }
+#define LOG(lev,msg) { if(lev <= LOGLEVEL) cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<<msg << endl; fflush(stdout);}
 
-#define INFO(msg) { cout << "["<<time(0)<<"] "<<msg << endl; }
+#define INFO(msg) { cout << "["<<time(0)<<"]\t"<<msg << endl; }
 #define ERROR(msg) { cout << "["<<__FILE__<<" line: "<<__LINE__<<"] "<< "[ERROR] "<<msg << endl; }
 #define ARRSIZE(arr) (unsigned long)(sizeof(arr)/sizeof(arr[0]))
 
@@ -114,6 +114,20 @@ class ConsoleService : public Service{
 	~ConsoleService();
 	virtual int listen(const URL &url);
 	virtual void run();
+};
+
+class SecretService: public Service{
+public:
+	SecretService();
+	virtual ~SecretService();
+	
+	void addListeningChain(const URL &serviceaddr, const list<URL> &urls, const URL &listenaddr);
+	virtual int listen(const URL &url){};
+	virtual void run();
+	
+private:
+	list<pair<VSL::VSOCKET, URL> > m_ListeningChains;
+	list<pair<VSL::VSOCKET, VSL::VSOCKET> > m_ActiveChains;
 };
 
 struct Application{

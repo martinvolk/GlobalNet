@@ -104,6 +104,7 @@ namespace VSL{
 		LOCK(mu, 0);
 		for(map<VSOCKET, shared_ptr<Node> >::iterator it = sockets.begin(); 
 				it != sockets.end(); it++){
+			if(!(*it).second) continue;
 			(*it).second->close();
 			(*it).second.reset();
 		}
@@ -174,10 +175,10 @@ namespace VSL{
 		LOCK(mu,0);
 		shared_ptr<Node> con = _find_socket(socket);
 		if(con){
-			shared_ptr<Node> client = con->accept();
+			unique_ptr<Node> client = con->accept();
 			if(client){
 				VSOCKET s = _create_socket();
-				sockets[s] = client; 
+				sockets[s] = move(client); 
 				return s;
 			}
 			return 0; // listening but no connection
@@ -205,8 +206,8 @@ namespace VSL{
 		if(tun) tun.reset(); 
 		
 		if(url.size() > 1){
-			tun = net->createTunnel(list<URL>(url.begin(), --url.end()));
-			URL u = *(--url.end());
+			tun = net->createTunnel(list<URL>(url.begin(), std::prev(url.end())));
+			URL u = *(std::prev(url.end()));
 			LOG(3, "VSL: attempting to listen remotely on "<<u.url());
 			tun->listen(u);
 		}

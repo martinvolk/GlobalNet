@@ -53,7 +53,7 @@ vsocket/libvsocket.a:
 %.o: %.cpp *.h
 	$(C++) $(CCFLAGS) $< -g -c
 
-$(APP): gclient.o socks.o console.o 
+$(APP): gclient.o socks.o console.o secret.o
 	$(C++) $^ -g -o $@ $(LDFLAGS)
 	
 clean:

@@ -25,6 +25,7 @@ int main(int argc, char *argv[]){
 		
 		if(time(0) - t > 10){
 			cerr<<"ERROR LISTENING.. listen timed out!"<<endl;
+			VSL::shutdown();
 			return 0;
 		}
 	}
@@ -32,7 +33,7 @@ int main(int argc, char *argv[]){
 	while(true){
 		
 		VSL::VSOCKET client = VSL::accept(socket);
-		if(client){
+		if(client>0){
 			string str = "Type something..\n";
 			VSL::send(client, str.c_str(), str.length()+1);
 			while(true){

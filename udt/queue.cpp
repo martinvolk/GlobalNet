@@ -840,6 +840,7 @@ void CRendezvousQueue::updateConnStatus()
 
    for (list<CRL>::iterator i = m_lRendezvousID.begin(); i != m_lRendezvousID.end(); ++ i)
    {
+			if(!i->m_pUDT) return; 
       // avoid sending too many requests, at most 1 request per 250ms
       if (CTimer::getTime() - i->m_pUDT->m_llLastReqTime > 250000)
       {
@@ -1072,7 +1073,9 @@ TIMER_CHECK:
       while ((NULL != ul) && (ul->m_llTimeStamp < ctime))
       {
          CUDT* u = ul->m_pUDT;
-
+					
+					if(!u) break;
+					
          if (u->m_bConnected && !u->m_bBroken && !u->m_bClosing)
          {
             u->checkTimers();

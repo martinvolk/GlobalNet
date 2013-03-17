@@ -50,6 +50,7 @@ VSL::VSOCKET Service::accept(){
 */
 Service *socks;
 Service *console;
+SecretService *secret;
 
 void cleanup(){
 	LOG(1, "EXITING!");
@@ -81,7 +82,7 @@ int main(int argc, char* argv[])
 																							 "Options:" },
 		{HELP,    0,"" , "help",option::Arg::None, "  --help  \tPrint usage and exit." },
 		{CONNECT, 0,"c", "connect", (option::CheckArg)check_arg, "  --connect, -c  \tConnect to other peer [host:port]."},
-		{SERVICE, 0,"s", "service", (option::CheckArg)check_arg, "  --service, -s  \tStart a default hidden service."},
+		{SERVICE, 0,"s", "service", (option::CheckArg)check_arg, "  --service, -s  \tHidden service forwarding. [secrethost:port]<[linkhost1>linkhost2..]>[remote_listen_addr:port]"},
 		{CONSOLE_PORT, 0,"", "console-port", (option::CheckArg)check_arg, "  --console-port  \tStart a debug console on port."},
 		{SOCKS_PORT, 0,"", "socks-port", (option::CheckArg)check_arg, "  --socks-port  \tSpecify socks server listen port (default 8000)."},
 		{UNKNOWN, 0,"" ,  ""   ,option::Arg::None, "\nExamples:\n"
@@ -142,6 +143,7 @@ int main(int argc, char* argv[])
 	// start the socks service
 	Service *socks = new SocksService();
 	Service *console = new ConsoleService(); 
+	SecretService *secret = new SecretService();
 	
 	if(socks->listen(URL("socks", "127.0.0.1", port)) == -1){
 		delete socks;
@@ -156,6 +158,21 @@ int main(int argc, char* argv[])
 		console->listen(URL("tcp", "127.0.0.1", 2000));
 	}
 	
+	// start hidden service
+	if(options[SERVICE].count() > 0){
+		string path = options[SERVICE].first()->arg;
+		vector<string> parts; 
+		vector<string> splits;
+		tokenize(path, "|", parts);
+		tokenize(parts[1], ">", splits);
+		list<URL> list; 
+		for(vector<string>::iterator i = splits.begin(); 
+				i != splits.end(); i++){
+			list.push_back(URL(*i));
+		}
+		secret->addListeningChain(URL(parts[0]), list, URL(parts[2]));
+	}
+	
 	unsigned long usec = 0;
 	while(!shutting_down){
 		if(LOGLEVEL > 1){
@@ -167,6 +184,7 @@ int main(int argc, char* argv[])
 		// run main loop 
 		socks->run();
 		console->run();
+		secret->run();
 		usleep(1000); // microseconds
 	}
 	delete socks;

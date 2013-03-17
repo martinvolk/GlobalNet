@@ -27,6 +27,8 @@ UDTNode::~UDTNode(){
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
 unique_ptr<Node> UDTNode::accept(){
+	if(!(state & CON_STATE_LISTENING)) return unique_ptr<Node>();
+	
 	UDTSOCKET recver;
 	sockaddr_storage clientaddr;
 	int addrlen = sizeof(clientaddr);
@@ -140,9 +142,11 @@ int UDTNode::bind(const URL &url){
 }
 
 int UDTNode::send(const char *data, size_t size){
+	if(!(state & CON_STATE_ESTABLISHED)) return -1;
 	return m_Buffer.send(data, size);
 }
 int UDTNode::recv(char *data, size_t size, size_t minsize) const{
+	if(!(state & CON_STATE_ESTABLISHED)) return -1;
 	if(!m_Buffer.input_pending() || m_Buffer.input_pending() < minsize)  return 0;
 	int rc = m_Buffer.recv(data, size, minsize);
 	LOG(3,"UDT: received "<<rc<<" bytes of data from UDT socket "<<url.url());
@@ -164,6 +168,7 @@ void UDTNode::run(){
 		this->state = CON_STATE_ESTABLISHED;
 	}
 	else if(this->state & CON_STATE_CONNECTING && (status == BROKEN || status == CLOSED)){
+		LOG(3, "UDT: connection failed!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 	

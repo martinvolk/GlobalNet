@@ -119,11 +119,13 @@ void Network::init(){
 Network::~Network(){
 	LOG(1,"NET: shutting down..");
 	
-	
 	m_Bridges.clear();
+	
+	LOG(3,"NET: deleting channels..");
 	m_Channels.clear();
 	
 	// close connections
+	LOG(3,"NET: deleting peers..");
 	for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end();){
 		(*it).second.reset();
 		m_Peers.erase(it++);
@@ -131,6 +133,7 @@ Network::~Network(){
 	m_Peers.clear();
 	server.reset();
 
+	LOG(3,"NET: cleaning up UDT..");
 	// use this function to release the UDT library
 	UDT::cleanup();
 }
@@ -432,6 +435,6 @@ shared_ptr<Node> Network::createNode(const string &name){
 }
 
 void Network::free(Node *node){
-	//delete node;
+	
 }
 

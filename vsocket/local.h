@@ -764,8 +764,6 @@ input->send(encrypted_data, size); // sends encrypted block of data to
 the input of ssl node. 
 ssl->recv(buffer, size); // reads decrypted data from the SSL node. 
 
-delete input; 
-delete ssl;
 </pre>
 **/
 class MemoryNode;

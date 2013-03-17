@@ -30,23 +30,7 @@ Node::~Node(){
 	this->close();
 	
 	this->state = CON_STATE_UNINITIALIZED;
-	/*if(this->_output && this->_output != this){
-		if(this->_output->_input == this)
-			this->_output->_input = 0;
-		if(this->_output->_output == this)
-			this->_output->_output = 0;
-		delete _output;
-	}*/
-	/*
-	if(this->_input && this->_input != this){
-		if(this->_input->_input == this)
-			this->_input->_input = 0;
-		if(this->_input->_output == this)
-			this->_input->_output = 0;
-		delete _input;
-	}*/
-	
-	
+	LOG(3,"NODE: ======== "<<this<<": "<<url.url());
 }
 
 void Node::close(){
