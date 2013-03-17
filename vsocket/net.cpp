@@ -275,6 +275,11 @@ unique_ptr<Node> Network::connect(const URL &url){
 		tcp->connect(url);
 		return move(tcp);
 	}
+	else if(url.protocol().compare("udt") == 0){
+		unique_ptr<UDTNode> udt(new UDTNode(shared_from_this()));
+		udt->connect(url);
+		return move(udt);
+	}
 	else {
 		ERROR("NET: connect: INVALID PROTOCOL: "<<url.protocol());
 	}
