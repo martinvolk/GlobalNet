@@ -17,6 +17,10 @@ SecretService::~SecretService(){
 	}
 }
 
+void addConnectionChain(const URL &localaddr, const list<URL> &urls, const URL &remoteaddr){
+	
+}
+	
 void SecretService::addListeningChain(const URL &serviceaddr, const list<URL> &urls, const URL &listenaddr){
 	VSL::VSOCKET tunnel = VSL::socket();
 	list<URL> path = list<URL>(urls.begin(), urls.end());

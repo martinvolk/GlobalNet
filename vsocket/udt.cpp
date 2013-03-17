@@ -2,7 +2,18 @@
 VSL - Virtual Socket Layer
 Martin K. Schröder (c) 2012-2013
 
-Free software. Part of the GlobalNet project. 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **********************************************/
 
 #include "local.h"
@@ -142,11 +153,11 @@ int UDTNode::bind(const URL &url){
 }
 
 int UDTNode::send(const char *data, size_t size){
-	if(!(state & CON_STATE_ESTABLISHED)) return -1;
+	//if(!(state & CON_STATE_ESTABLISHED)) return -1;
 	return m_Buffer.send(data, size);
 }
 int UDTNode::recv(char *data, size_t size, size_t minsize) const{
-	if(!(state & CON_STATE_ESTABLISHED)) return -1;
+	//if(!(state & CON_STATE_ESTABLISHED)) return -1;
 	if(!m_Buffer.input_pending() || m_Buffer.input_pending() < minsize)  return 0;
 	int rc = m_Buffer.recv(data, size, minsize);
 	LOG(3,"UDT: received "<<rc<<" bytes of data from UDT socket "<<url.url());

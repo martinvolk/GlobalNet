@@ -125,6 +125,8 @@ public:
 	virtual ~SecretService();
 	
 	void addListeningChain(const URL &serviceaddr, const list<URL> &urls, const URL &listenaddr);
+	void addConnectionChain(const URL &localaddr, const list<URL> &urls, const URL &remoteaddr);
+	
 	virtual int listen(const URL &url){};
 	virtual void run();
 	

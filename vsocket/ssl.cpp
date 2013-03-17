@@ -2,7 +2,18 @@
 VSL - Virtual Socket Layer
 Martin K. Schröder (c) 2012-2013
 
-Free software. Part of the GlobalNet project. 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **********************************************/
 
 #include "local.h"
@@ -201,9 +212,6 @@ void SSLNode::run(){
 		this->state = CON_STATE_SSL_HANDSHAKE; 
 		LOG(1,"SSL: initializing handshake..");
 	}
-	if(this->state & CON_STATE_CONNECTED && m_pTransportLayer->state & CON_STATE_DISCONNECTED){
-		this->state = CON_STATE_DISCONNECTED; 
-	}
 	
 	// send / receive data between internal buffers and output 
 	// but only if the connection is still valid. 
@@ -274,11 +282,15 @@ void SSLNode::run(){
 		}
 	} 
 	
+	if(this->state & CON_STATE_CONNECTED && m_pTransportLayer->state & CON_STATE_DISCONNECTED){
+		this->state = CON_STATE_DISCONNECTED; 
+	}
+	
 	// we always should check whether the output has closed so that we can graciously 
 	// switch state to closed of our connection as well. The other connections 
 	// that are pegged on top of this one will do the same. 
 	if(m_pTransportLayer->state & CON_STATE_DISCONNECTED){
-		//LOG(1,"SSL: underlying connection lost. Disconnected!");
+		LOG(1,"SSL: underlying connection lost. Disconnected!");
 		this->state = CON_STATE_DISCONNECTED;
 	}
 }
