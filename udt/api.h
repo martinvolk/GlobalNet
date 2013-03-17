@@ -44,6 +44,7 @@ written by
 
 #include <map>
 #include <vector>
+#include <memory>
 #include "udt.h"
 #include "packet.h"
 #include "queue.h"
@@ -203,7 +204,7 @@ private:
    std::map<UDTSOCKET, CUDTSocket*> m_Sockets;       // stores all the socket structures
 
    pthread_mutex_t m_ControlLock;                    // used to synchronize UDT API
-
+		pthread_mutex_t m_CheckLock;
    pthread_mutex_t m_IDLock;                         // used to synchronize ID generation
    UDTSOCKET m_SocketID;                             // seed to generate a new unique socket ID
 

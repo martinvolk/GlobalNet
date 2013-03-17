@@ -49,6 +49,7 @@ written by
 #include <map>
 #include <queue>
 #include <vector>
+#include <memory>
 
 class CUDT;
 
@@ -511,7 +512,7 @@ private:
 struct CMultiplexer
 {
    CSndQueue* m_pSndQueue;	// The sending queue
-   CRcvQueue* m_pRcvQueue;	// The receiving queue
+   std::shared_ptr<CRcvQueue> m_pRcvQueue;	// The receiving queue
    CChannel* m_pChannel;	// The UDP channel for sending and receiving
    CTimer* m_pTimer;		// The timer
 

@@ -208,7 +208,7 @@ void SSLNode::run(){
 	// send / receive data between internal buffers and output 
 	// but only if the connection is still valid. 
 	if(!(state & CON_STATE_INVALID)){
-		int rc;
+		int rc = 0;
 		char tmp[SOCKET_BUF_SIZE];
 		
 		while(BIO_ctrl_pending(this->write_buf)){

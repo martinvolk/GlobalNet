@@ -46,6 +46,7 @@ written by
    #endif
 #endif
 #include <cstring>
+#include <iostream>
 
 #include "common.h"
 #include "core.h"
@@ -471,8 +472,14 @@ CSndQueue::~CSndQueue()
       pthread_mutex_lock(&m_WindowLock);
       pthread_cond_signal(&m_WindowCond);
       pthread_mutex_unlock(&m_WindowLock);
-      if (0 != m_WorkerThread)
-         pthread_join(m_WorkerThread, NULL);
+      if (0 != m_WorkerThread){
+				pthread_detach(m_WorkerThread);
+				if(pthread_join(m_WorkerThread, NULL) != 0){
+					cout<<"ERROR JOINING THREAD!"<<endl;
+				}
+				// for some reason join fails and exits without waiting. 
+				while(m_bClosing == true); // reset by exiting thread
+      }
       pthread_cond_destroy(&m_WindowCond);
       pthread_mutex_destroy(&m_WindowLock);
    #else
@@ -503,7 +510,6 @@ void CSndQueue::init(const CChannel* c, const CTimer* t)
          m_WorkerThread = 0;
          throw CUDTException(3, 1);
       }
-      pthread_detach(m_WorkerThread);
    #else
       DWORD threadID;
       m_WorkerThread = CreateThread(NULL, 0, CSndQueue::worker, this, 0, &threadID);
@@ -553,7 +559,7 @@ void CSndQueue::init(const CChannel* c, const CTimer* t)
          #endif
       }
    }
-
+		self->m_bClosing = false;
    #ifndef WIN32
       return NULL;
    #else
@@ -906,8 +912,13 @@ CRcvQueue::~CRcvQueue()
    m_bClosing = true;
 
    #ifndef WIN32
-      if (0 != m_WorkerThread)
-         pthread_join(m_WorkerThread, NULL);
+      if (0 != m_WorkerThread){
+				if(pthread_join(m_WorkerThread, NULL) != 0){
+					cout<<"ERROR JOINING THREAD!"<<endl;
+				}
+				// for some reason join fails and exits without waiting. 
+				while(m_bClosing == true); // reset by exiting thread
+			}
       pthread_mutex_destroy(&m_PassLock);
       pthread_cond_destroy(&m_PassCond);
       pthread_mutex_destroy(&m_LSLock);
@@ -1100,7 +1111,8 @@ TIMER_CHECK:
       delete (sockaddr_in*)addr;
    else
       delete (sockaddr_in6*)addr;
-
+	
+		self->m_bClosing = false;
    #ifndef WIN32
       return NULL;
    #else

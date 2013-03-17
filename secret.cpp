@@ -6,6 +6,15 @@ SecretService::SecretService(){
 
 SecretService::~SecretService(){
 	LOG(3, "SECRET: deleting..");
+	for(list<pair<VSL::VSOCKET, URL> >::iterator it = m_ListeningChains.begin();
+		it != m_ListeningChains.end(); it++){
+		VSL::close((*it).first);
+	}
+	for(list<pair<VSL::VSOCKET, VSL::VSOCKET> >::iterator it = m_ActiveChains.begin();
+			it != m_ActiveChains.end(); it++){
+		VSL::close((*it).first);
+		VSL::close((*it).second);
+	}
 }
 
 void SecretService::addListeningChain(const URL &serviceaddr, const list<URL> &urls, const URL &listenaddr){

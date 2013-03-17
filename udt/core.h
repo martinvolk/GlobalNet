@@ -440,7 +440,7 @@ private: // Timers
 
 private: // for UDP multiplexer
    CSndQueue* m_pSndQueue;			// packet sending queue
-   CRcvQueue* m_pRcvQueue;			// packet receiving queue
+   std::shared_ptr<CRcvQueue> m_pRcvQueue;			// packet receiving queue
    sockaddr* m_pPeerAddr;			// peer address
    uint32_t m_piSelfIP[4];			// local UDP IP address
    CSNode* m_pSNode;				// node information for UDT list used in snd queue

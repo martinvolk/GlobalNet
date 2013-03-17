@@ -138,6 +138,7 @@ m_ClosedSockets()
 
    #ifndef WIN32
       pthread_mutex_init(&m_ControlLock, NULL);
+      pthread_mutex_init(&m_CheckLock, NULL);
       pthread_mutex_init(&m_IDLock, NULL);
       pthread_mutex_init(&m_InitLock, NULL);
    #else
@@ -232,7 +233,10 @@ int CUDTUnited::cleanup()
    m_bClosing = true;
    #ifndef WIN32
       pthread_cond_signal(&m_GCStopCond);
-      pthread_join(m_GCThread, NULL);
+      if(pthread_join(m_GCThread, NULL) != 0){
+				while(m_bClosing);
+			}
+      
       pthread_mutex_destroy(&m_GCStopLock);
       pthread_cond_destroy(&m_GCStopCond);
    #else
@@ -1250,23 +1254,25 @@ void CUDTUnited::checkBrokenSockets()
 
 void CUDTUnited::removeSocket(const UDTSOCKET u)
 {
-   map<UDTSOCKET, CUDTSocket*>::iterator i = m_ClosedSockets.find(u);
+   map<UDTSOCKET, CUDTSocket*>::iterator it = m_ClosedSockets.find(u);
 
    // invalid socket ID
-   if (i == m_ClosedSockets.end())
+   if (it == m_ClosedSockets.end())
       return;
-
-	 if(!(*i).second->m_pUDT) return;
+	CUDTSocket * sock = it->second;
+		m_ClosedSockets.erase(it);
+		
+	 if(!sock->m_pUDT) return;
 	 
    // decrease multiplexer reference count, and remove it if necessary
-   const int mid = i->second->m_iMuxID;
+   const int mid = sock->m_iMuxID;
 
-   if (NULL != i->second->m_pQueuedSockets)
+   if (NULL != sock->m_pQueuedSockets)
    {
-      CGuard::enterCS(i->second->m_AcceptLock);
+      CGuard::enterCS(sock->m_AcceptLock);
 
       // if it is a listener, close all un-accepted sockets in its queue and remove them later
-      for (set<UDTSOCKET>::iterator q = i->second->m_pQueuedSockets->begin(); q != i->second->m_pQueuedSockets->end(); ++ q)
+      for (set<UDTSOCKET>::iterator q = sock->m_pQueuedSockets->begin(); q != sock->m_pQueuedSockets->end(); ++ q)
       {
          m_Sockets[*q]->m_pUDT->m_bBroken = true;
          m_Sockets[*q]->m_pUDT->close();
@@ -1276,11 +1282,11 @@ void CUDTUnited::removeSocket(const UDTSOCKET u)
          m_Sockets.erase(*q);
       }
 
-      CGuard::leaveCS(i->second->m_AcceptLock);
+      CGuard::leaveCS(sock->m_AcceptLock);
    }
 
    // remove from peer rec
-   map<int64_t, set<UDTSOCKET> >::iterator j = m_PeerRec.find((i->second->m_PeerID << 30) + i->second->m_iISN);
+   map<int64_t, set<UDTSOCKET> >::iterator j = m_PeerRec.find((sock->m_PeerID << 30) + sock->m_iISN);
    if (j != m_PeerRec.end())
    {
       j->second.erase(u);
@@ -1289,9 +1295,8 @@ void CUDTUnited::removeSocket(const UDTSOCKET u)
    }
 
    // delete this one
-   i->second->m_pUDT->close();
-   delete i->second;
-   m_ClosedSockets.erase(i);
+   sock->m_pUDT->close();
+   delete sock;
 
    map<int, CMultiplexer>::iterator m;
    m = m_mMultiplexer.find(mid);
@@ -1306,8 +1311,8 @@ void CUDTUnited::removeSocket(const UDTSOCKET u)
    {
       m->second.m_pChannel->close();
       delete m->second.m_pSndQueue;
-      // TODO: FIGURE OUT WHY THIS CRASHES WITH DOUBLE FREE!
-      //delete m->second.m_pRcvQueue;
+      //if(m->second.m_pRcvQueue)
+			//	m->second.m_pRcvQueue.reset();
       delete m->second.m_pTimer;
       delete m->second.m_pChannel;
       m_mMultiplexer.erase(m);
@@ -1432,7 +1437,7 @@ void CUDTUnited::updateMux(CUDTSocket* s, const sockaddr* addr, const UDPSOCKET*
 
    m.m_pSndQueue = new CSndQueue;
    m.m_pSndQueue->init(m.m_pChannel, m.m_pTimer);
-   m.m_pRcvQueue = new CRcvQueue;
+   m.m_pRcvQueue = shared_ptr<CRcvQueue>(new CRcvQueue());
    m.m_pRcvQueue->init(32, s->m_pUDT->m_iPayloadSize, m.m_iIPversion, 1024, m.m_pChannel, m.m_pTimer);
 
    m_mMultiplexer[m.m_iID] = m;
@@ -1525,11 +1530,14 @@ void CUDTUnited::updateMux(CUDTSocket* s, const CUDTSocket* ls)
       j->second->m_TimeStamp = 0;
    }
    CGuard::leaveCS(self->m_ControlLock);
-
+/*
+	TODO: this code causes a double free for some reason. 
    while (true)
    {
+			pthread_mutex_lock(&self->m_CheckLock);
       self->checkBrokenSockets();
-
+      pthread_mutex_unlock(&self->m_CheckLock);
+      
       CGuard::enterCS(self->m_ControlLock);
       bool empty = self->m_ClosedSockets.empty();
       CGuard::leaveCS(self->m_ControlLock);
@@ -1539,7 +1547,8 @@ void CUDTUnited::updateMux(CUDTSocket* s, const CUDTSocket* ls)
 
       CTimer::sleep();
    }
-
+		*/
+		self->m_bClosing = false;
    #ifndef WIN32
       return NULL;
    #else
