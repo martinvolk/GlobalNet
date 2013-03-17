@@ -158,6 +158,18 @@ namespace VSL{
 		return 0;
 	}
 	
+	int bind(VSOCKET socket, const URL &url){
+		LOCK(mu,0);
+		shared_ptr<Node> con = _find_socket(socket);
+		if(!con)
+			con = net->createNode(url.protocol());
+		if(con){
+			sockets[socket] = con;
+			return con->bind(url);
+		}
+		return -1;
+	}
+	
 	VSL::VSOCKET accept(VSL::VSOCKET socket){
 		LOCK(mu,0);
 		shared_ptr<Node> con = _find_socket(socket);
@@ -184,6 +196,29 @@ namespace VSL{
 		if(con){
 			return con->listen(url); 
 		}
+		return -1;
+	}
+	
+	int listen(VSOCKET socket, const list<URL> &url){
+		LOCK(mu,0);
+		shared_ptr<Node> tun = _find_socket(socket);
+		if(tun) tun.reset(); 
+		
+		if(url.size() > 1){
+			tun = net->createTunnel(list<URL>(url.begin(), --url.end()));
+			URL u = *(--url.end());
+			LOG(3, "VSL: attempting to listen remotely on "<<u.url());
+			tun->listen(u);
+		}
+		else {
+			URL u = (*url.begin());
+			tun = net->createNode(u.protocol());
+			if(tun){
+				LOG(3, "VSL: attempting to listen on "<<u.url());
+				tun->listen(u);
+			}
+		}
+		sockets[socket] = tun;
 		return -1;
 	}
 	
@@ -231,6 +266,8 @@ namespace VSL{
 			info->state = VSOCKET_DISCONNECTED;
 		else if(n->state & CON_STATE_IDLE)
 			info->state = VSOCKET_IDLE;
+		else if(n->state & CON_STATE_LISTENING)
+			info->state = VSOCKET_LISTENING;
 			
 		info->is_connected = (n->state & CON_STATE_CONNECTED) != 0;
 		return 0;

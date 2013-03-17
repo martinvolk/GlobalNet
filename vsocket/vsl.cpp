@@ -110,6 +110,21 @@ int VSLNode::connect(const URL &url){
 	return 1;
 }
 
+int VSLNode::connect(const unique_ptr<Channel> &hub, const URL &peer){
+	URL target = URL("vsl", peer.host(), rand()%63536+2000);
+	hub->sendCommand(Packet(CMD_CONNECT_RZ_REQUEST, target.url().c_str(), target.url().length(), ""));
+	//m_pTransportLayer->set_option("rendezvous", "1");
+	m_pTransportLayer->bind(URL("udt", "localhost", target.port()));
+	m_pTransportLayer->connect(URL("udt", target.host(), target.port()));
+	this->state = CON_STATE_CONNECTING;
+	m_tConnectInitTime = time(0);
+	return 0;
+}
+
+int VSLNode::bind(const URL &url){
+	return m_pTransportLayer->bind(url);
+}
+
 unique_ptr<Node> VSLNode::accept(){
 	// accept means accepting a connection on a listening socket
 	// so we have no reason to do anything if we are not in listen state

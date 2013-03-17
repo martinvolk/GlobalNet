@@ -11,6 +11,19 @@ Free software. Part of the GlobalNet project.
 Implementation of a normal UDT connection. Does not support any commands or packets. 
 ***/ 
 
+UDTNode::UDTNode(weak_ptr<Network> net):Node(net){
+	this->type = NODE_UDT;
+	this->socket = 0;
+}
+
+UDTNode::~UDTNode(){
+	LOG(3,"UDT: deleting "<<url.url());
+	
+	if(!(this->state & CON_STATE_DISCONNECTED))
+		this->close();
+}
+
+
 /** internal function for establishing internal connections to other peers
 Establishes a UDT connection using listen_port as local end **/
 unique_ptr<Node> UDTNode::accept(){
@@ -53,7 +66,7 @@ int UDTNode::connect(const URL &url){
 	hints.ai_socktype = SOCK_STREAM;
 
 	stringstream ss;
-	ss << CLIENT_BIND_PORT;
+	ss << m_sBindUrl.port();
 	if (0 != getaddrinfo(NULL, ss.str().c_str(), &hints, &local))
 	{
 		cout << "incorrect network address.\n" << endl;
@@ -75,15 +88,18 @@ int UDTNode::connect(const URL &url){
 		UDT::setsockopt(client, 0, UDT_MSS, new int(1052), sizeof(int));
 	#endif
 
-	// for rendezvous connection, enable the code below
-	
-	//UDT::setsockopt(client, 0, UDT_RENDEZVOUS, new bool(true), sizeof(bool));
-	/*if (UDT::ERROR == UDT::bind(client, local->ai_addr, local->ai_addrlen))
-	{
-		cout << "bind: " << UDT::getlasterror().getErrorMessage() << endl;
-		return 0;
-	}*/
-	
+	LOG(2, "UDT: connecting to "<<url.url());
+	// if the socket is bound then the intention is to connect rendezvously
+	if(m_sBindUrl.port()>0){
+		static bool val = true;
+		LOG(2, "UDT: using rendezvous connect to connect to: "<<url.url());
+		UDT::setsockopt(client, 0, UDT_RENDEZVOUS, &val, sizeof(bool));
+		if (UDT::ERROR == UDT::bind(client, local->ai_addr, local->ai_addrlen))
+		{
+			ERROR("UDT: bind: " << UDT::getlasterror().getErrorMessage());
+			return 0;
+		}
+	}
 
 	freeaddrinfo(local);
 	
@@ -95,7 +111,7 @@ int UDTNode::connect(const URL &url){
 		return 0;
 	}
 	// set non blocking
-	bool opt = false;
+	static bool opt = false;
 	UDT::setsockopt(client, 0, UDT_RCVSYN, &opt, sizeof(bool));
 	
 	// connect to the server, implict bind
@@ -114,6 +130,13 @@ int UDTNode::connect(const URL &url){
 	
 	
 	return 1;
+}
+
+int UDTNode::bind(const URL &url){
+	// set the bind url - the actual binding is done in "listen" or "connect"
+	LOG(3, "UDT: bind: "<<url.url());
+	m_sBindUrl = url;
+	return 0;
 }
 
 int UDTNode::send(const char *data, size_t size){
@@ -232,16 +255,4 @@ void UDTNode::close(){
 		UDT::close(this->socket);
 	socket = 0;
 	LOG(1,"UDT: disconnected from "<<url.url());
-}
-
-UDTNode::UDTNode(weak_ptr<Network> net):Node(net){
-	this->type = NODE_UDT;
-	this->socket = 0;
-}
-
-UDTNode::~UDTNode(){
-	LOG(3,"UDT: deleting "<<url.url());
-	
-	if(!(this->state & CON_STATE_DISCONNECTED))
-		this->close();
 }

@@ -43,6 +43,7 @@ APP = gclient
 all: vsocket/libvsocket.a
 	make -C udt
 	make -C vsocket
+	make -C tests
 	rm -f gclient
 	make -C . $(APP)
 

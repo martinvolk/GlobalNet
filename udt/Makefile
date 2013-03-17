@@ -33,7 +33,7 @@ endif
 OBJS = md5.o common.o window.o list.o buffer.o packet.o channel.o queue.o ccc.o cache.o core.o epoll.o api.o
 DIR = $(shell pwd)
 
-all: libudt.so libudt.a udt
+all: libudt.a udt
 
 %.o: %.cpp %.h udt.h
 	$(C++) $(CCFLAGS) $< -c
@@ -46,7 +46,7 @@ else
 endif
 
 libudt.a: $(OBJS)
-	ar -rcs $@ $^
+	ar -rc $@ $^
 
 udt:
 	cp udt.h udt

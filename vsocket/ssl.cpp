@@ -135,6 +135,12 @@ int SSLNode::connect(const URL &url){
 	return 1;
 }
 
+int SSLNode::bind(const URL &url){
+	// we don't have the concept of binding in this node so we pass the 
+	// request down to the underlying layer. 
+	return m_pTransportLayer->bind(url);
+}
+
 unique_ptr<Node> SSLNode::accept(){
 	// the accept call is meaningless to SSL node itthis-> 
 	// but if there is a connection from downline then we gladly serve it. 

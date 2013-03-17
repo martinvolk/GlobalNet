@@ -14,7 +14,7 @@ Free software. Part of the GlobalNet project.
 #include <vector>
 #include <list>
 
-#define LOGLEVEL 1
+#define LOGLEVEL 3
 
 class URL {
 public:
@@ -61,6 +61,7 @@ namespace VSL {
 		VSOCKET_CONNECTING,
 		VSOCKET_CONNECTED,
 		VSOCKET_IDLE,
+		VSOCKET_LISTENING,
 		VSOCKET_DISCONNECTED
 	}SocketState;
 	
@@ -96,12 +97,13 @@ namespace VSL {
 	/** Establishes a tunnel to the specified hosts **/
 	int connect(VSOCKET socket, const list<URL> &links);
 	
+	int bind(VSOCKET socket, const URL &url);
 	/**
 	Puts the socket into listening mode and listens for incoming 
 	connections on the specified port. 
 	**/
 	int listen(VSOCKET socket, const URL &url);
-	int listen(VSOCKET socket, const vector<URL> &links);
+	int listen(VSOCKET socket, const list<URL> &links);
 	
 	/**
 	Accepts a new connection if the is one available. 

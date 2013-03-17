@@ -232,6 +232,16 @@ typedef enum {
 	CMD_CHAN_ACK,
 	CMD_CHAN_CLOSE, 
 	
+	CMD_CONNECT_RZ_REQUEST,
+	CMD_CONNECT_RZ_INIT,
+	
+	CMD_REMOTE_LISTEN,
+	CMD_REMOTE_LISTEN_SUCCESS,
+	CMD_REMOTE_LISTEN_CLOSE,
+	CMD_REMOTE_LISTEN_CLIENT_CONNECTED,
+	CMD_REMOTE_LISTEN_CLIENT_DISCONNECTED,
+	CMD_REMOTE_LISTEN_DATA,
+	
 	/** relay messages **/
 	RELAY_CONNECT, /// [host:port] REL_PROTO_* connect to another host
 	RELAY_ACK, /// sent by relay upon success. 
@@ -425,6 +435,7 @@ public:
 	
 	// virtual functions
 	virtual int connect(const URL &url);
+	virtual int bind(const URL &url) = 0;
 	virtual int send(const char *data, size_t maxsize) = 0;
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const = 0;
 	virtual int sendCommand(const Packet &data) {return 0;}
@@ -480,6 +491,9 @@ public:
 	virtual ~VSLNode();
 	
 	virtual int connect(const URL &url);
+	virtual int connect(const unique_ptr<Channel> &hub, const URL &peer);
+	
+	virtual int bind(const URL &url) ;
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	
@@ -508,6 +522,8 @@ private:
 	bool m_bPacketReadInProgress;
 	bool m_bReleasingChannel;
 	
+	time_t m_tConnectInitTime;
+	
 	// weak pointers to the channels
 	map<string, Channel* > m_Channels;
 	
@@ -532,6 +548,7 @@ public:
 	virtual ~SSLNode();
 	
 	virtual int connect(const URL &url);
+	virtual int bind(const URL &url);
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
@@ -584,6 +601,7 @@ public:
 	virtual ~TCPNode();
 
 	virtual int connect(const URL &url);
+	virtual int bind(const URL &url) {return 0;}
 	virtual int recv(char *data, size_t size, size_t minsize = 0) const;
 	virtual int send(const char *data, size_t size);
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
@@ -609,6 +627,7 @@ public:
 	virtual ~UDTNode();
 	
 	virtual int connect(const URL &url);
+	virtual int bind(const URL &url);
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
@@ -618,6 +637,8 @@ public:
 	virtual void run();
 	virtual void close();
 private:
+	URL m_sBindUrl;
+	
 	Buffer m_Buffer;
 	UDTSOCKET socket;
 };
@@ -628,6 +649,7 @@ public:
 	virtual ~BridgeNode();
 	
 	virtual int connect(const URL &url);
+	virtual int bind(const URL &url) {return 0;}
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
@@ -680,6 +702,7 @@ public:
 	//virtual int connect(const URL &url);
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
+	virtual int bind(const URL &url) {return 0;}
 	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
 	//virtual int recvCommand(Packet *pack);
 	virtual int listen(const URL &url);
@@ -804,8 +827,10 @@ node->setOutput(parent);
 node->do_handshake(SOCK_CLIENT);
 </pre>
 **/
+class ChannelRemoteConnection;
 class Channel : public Node, public PacketHandler{
 	friend class VSLNode;
+	friend class ChannelRemoteConnection;
 protected:
 	Channel(weak_ptr<Network> net, VSLNode* link, const string &tag = "");
 public:
@@ -816,6 +841,7 @@ public:
 	// this will connect further at the remote end of connection node
 	virtual int connect(const URL &url);
 	
+	virtual int bind(const URL &url) {return 0;}
 	// send and receive data to and from the remote end of the channel (use after you have done a "connect)
 	virtual int send(const char *data, size_t maxsize);
 	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
@@ -832,6 +858,8 @@ public:
 	// detaches the channel from ext_link
 	void detach();
 private: 
+	void unlinkRemoteConnection(uint32_t tag);
+	
 	bool m_bDeleteInProgress;
 	
 	//list<shared_ptr<VSLNode> > m_Peers;
@@ -840,10 +868,53 @@ private:
 	//shared_ptr<Node> m_pRelay;
 	string m_sHash;
 	
+	unique_ptr<Node> m_pListenSocket;
+	map<uint32_t, unique_ptr<Node> > m_ListenClients;
+	map<uint32_t, ChannelRemoteConnection*> m_RemoteClients;
+	deque<pair<uint32_t, ChannelRemoteConnection*> > m_AcceptQueue;
+	
 	deque<Packet> m_CommandBuffer;
 	
 	//unique_ptr<Channel> m_pTarget;
 	VSLNode* m_extLink;
+};
+
+/**
+A virtual connection done through a channel to a remote client 
+connected over a listening socket. 
+**/
+
+class ChannelRemoteConnection : public Node {
+	friend class Channel;
+protected:
+	ChannelRemoteConnection(weak_ptr<Network> net, Channel* link, uint32_t tag);
+public:
+	virtual ~ChannelRemoteConnection();
+	
+	// this will connect further at the remote end of connection node
+	//virtual int connect(const URL &url);
+	
+	virtual int bind(const URL &url) {return 0;}
+	// send and receive data to and from the remote end of the channel (use after you have done a "connect)
+	virtual int send(const char *data, size_t maxsize);
+	virtual int recv(char *data, size_t maxsize, size_t minsize = 0) const;
+	//virtual int sendCommand(NodeMessage cmd, const char *data, size_t size, const string &tag);
+	//virtual int sendCommand(const Packet &pack);
+	//virtual bool recvCommand(Packet &pack);
+	//virtual int listen(const URL &url);
+	//virtual unique_ptr<Node> accept();
+	//virtual void run();
+	virtual void close();
+	
+	void handleData(const char *data, size_t size);
+	
+	void detach();
+private: 
+	Channel *m_pChannel;
+	uint32_t m_iTag;
+	
+	Buffer m_ReadBuffer;
+	
 };
 
 /**

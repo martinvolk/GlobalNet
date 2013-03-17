@@ -89,12 +89,13 @@ void PeerDatabase::insert(const Record &_data){
 		LOG(1,"PDB: skipping peer: ip same as hub!");
 		return;
 	}
-//#ifndef DEBUG
+	// comment out this block to disallow local hosts in database
+	// (doing so will break localhost testing so use for production)
 	if(inet_ip_is_local(inet_get_host_ip(data.peer.host()))){
 		//LOG(1,"PDB: skipping peer because it's a local address!");
-		//return;
+		return;
 	}
-//#endif
+	
 	data.last_update = time(0);
 	//LOG(1,"PDB: adding peer into database: "<<data.peer.ip<<":"<<data.peer.port);
 	this->quarantine[data.hash().hex()] = data;
