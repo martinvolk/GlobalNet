@@ -109,13 +109,14 @@ namespace VSL{
 			(*it).second.reset();
 		}
 		
+		sockets.clear();
+		
 		running = false;
 		UNLOCK(mu, 0);
 		void *ret;
 		pthread_join(worker, &ret);
 		
-		//sockets.clear();
-		//net.reset();
+		net.reset();
 	}
 	
 	

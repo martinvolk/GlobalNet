@@ -256,8 +256,11 @@ int UDTNode::listen(const URL &url){
 void UDTNode::close(){
 	this->state = CON_STATE_DISCONNECTED;
 	
-	if(this->socket)
-		UDT::close(this->socket);
+	if(m_pNetwork.lock()){
+		if(this->socket != 0 && socket != UDT::INVALID_SOCK)
+			UDT::close(this->socket);
+	}
+	
 	socket = 0;
 	LOG(1,"UDT: disconnected from "<<url.url());
 }

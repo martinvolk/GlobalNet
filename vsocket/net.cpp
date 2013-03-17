@@ -131,6 +131,7 @@ Network::~Network(){
 	// close connections
 	LOG(3,"NET: deleting peers..");
 	for(map<string, shared_ptr<Node> >::iterator it = m_Peers.begin(); it != m_Peers.end();){
+		LOG(3, "NET: deleting peer "<<(*it).first);
 		(*it).second.reset();
 		m_Peers.erase(it++);
 	}

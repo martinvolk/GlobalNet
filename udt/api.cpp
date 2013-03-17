@@ -1306,7 +1306,8 @@ void CUDTUnited::removeSocket(const UDTSOCKET u)
    {
       m->second.m_pChannel->close();
       delete m->second.m_pSndQueue;
-      delete m->second.m_pRcvQueue;
+      // TODO: FIGURE OUT WHY THIS CRASHES WITH DOUBLE FREE!
+      //delete m->second.m_pRcvQueue;
       delete m->second.m_pTimer;
       delete m->second.m_pChannel;
       m_mMultiplexer.erase(m);
