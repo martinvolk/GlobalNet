@@ -99,14 +99,19 @@ void Channel::handlePacket(const Packet &pack){
 	else if(pack.cmd.code == CMD_REMOTE_LISTEN){
 		URL url = URL(pack.data.data());
 		unique_ptr<Node> connection; 
-		shared_ptr<Network> net = m_pNetwork.lock();
-		if(!net) return;
-		
-		connection = net->createNode(url.protocol());
-		if(!connection) return;
-		
+		if(url.protocol() == "tcp")
+			connection = unique_ptr<Node>(new TCPNode(m_pNetwork));
+		else if(url.protocol() == "udt")
+			connection = unique_ptr<Node>(new UDTNode(m_pNetwork));
+		else if(url.protocol() == "vsl")
+			connection = unique_ptr<Node>(new VSLNode(m_pNetwork, 
+					unique_ptr<Node>(new SSLNode(m_pNetwork, 
+						unique_ptr<Node>(new UDTNode(m_pNetwork)), SOCK_SERVER
+					))
+				)
+			);
+			
 		connection->listen(url);
-		
 		if(connection->state & CON_STATE_LISTENING){
 			m_pListenSocket = move(connection);
 			
