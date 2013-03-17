@@ -185,7 +185,7 @@ void PeerDatabase::loop(){
 			// test peers that are in quarantine and add them to the database if everything checks out. 
 			vector<Record> tmp;
 			
-			if(time(0) - timer1 > 15){
+			if(time(0) - timer1 > 10){
 				LOCK(mu,0);
 				LOG(1,"PDB: doing quarantine");
 				for(map<string, Record>::iterator it = this->quarantine.begin(); 
