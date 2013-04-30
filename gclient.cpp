@@ -91,7 +91,7 @@ void signal_handler(int sig){
 	}
 	
 	LOG(1,"SHUTTING DOWN!");
-	shutting_down = true;
+	is_running = false;
 }
 
 
