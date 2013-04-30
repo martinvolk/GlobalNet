@@ -29,14 +29,7 @@ that you have in the main directory.
 
 USAGE
 
--- connect to localhost and start a console and socks proxy. (you may 
-want to connect to some other host rather than localhost, but for the 
-sake of testing local connections are allowed. What this will mean, is 
-that relay connections are established through the localhost peer that 
-is connected to localhost - so essentially the software will be 
-connected to itself as a peer. 
+Check out the tests directory for example usage. You can also look at the client program supplied in gclient.cpp. 
 
-gclient -c "localhost:9000" --console-port 2000 --socks-port 8000
-
-Now you should be able to use the socks proxy that is running on port 
-8000 to make connections through the GlobalNet network. 
+LICENSE
+Standard GPL v3
